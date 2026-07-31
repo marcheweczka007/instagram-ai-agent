@@ -1,17 +1,15 @@
-You are an expert at extracting structured information from Instagram profiles.
+Extract factual Instagram profile fields from the visible page only.
 
-Your task is to extract only factual information from the currently opened Instagram profile.
-
-Return:
-
-- account name
-- profile URL
+Return structured data for:
+- name
+- profile_url
 - bio
-- followers count
-- following count
-- titles or descriptions of the latest 3 posts
+- followers
+- following
+- recent_posts (up to 3 captions/titles visible on the profile grid; empty list if none)
 
-If any information is unavailable, make your best estimate based on the visible page.
-
-Do not explain your reasoning.
-Return only structured data.
+Rules:
+- Do not open individual posts.
+- Do not explain reasoning.
+- If a field is missing, use an empty string, 0, or [].
+- If login wall, missing profile, or private account: stop and report LOGIN_REQUIRED, PROFILE_NOT_FOUND, or PRIVATE_PROFILE.

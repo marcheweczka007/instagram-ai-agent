@@ -22,6 +22,12 @@ from instagram_agent.domain.models import InstagramProfile
 
 logger = logging.getLogger(__name__)
 
+_SPEED_PROMPT = """
+Be concise. Prefer extract + done over exploration.
+Dismiss blocking modals only if needed, then extract visible profile fields.
+Do not open posts. Do not browse related accounts.
+""".strip()
+
 _LOGIN_URL_MARKERS: tuple[str, ...] = (
     "/accounts/login",
     "/accounts/signup",
@@ -48,14 +54,29 @@ class InstagramScraper:
     def __init__(
         self,
         model: str = "gpt-5",
-        max_steps: int = 5,
+        extraction_model: str = "gpt-5-mini",
+        max_steps: int = 8,
         timeout_seconds: float = 60,
     ) -> None:
-        prompt_path = (
-            Path(__file__).parent.parent / "prompts" / "scraper.md"
-        )
+        prompt_path = Path(__file__).parent.parent / "prompts" / "scraper.md"
         self._system_prompt: str = prompt_path.read_text(encoding="utf-8")
-        self._llm = ChatOpenAI(model=model)
+        # Low reasoning + few retries: LLM waits were the timeout bottleneck.
+        self._llm = ChatOpenAI(
+            model=model,
+            temperature=0.0,
+            reasoning_effort="minimal",
+            max_retries=1,
+            max_completion_tokens=2048,
+            timeout=40,
+        )
+        self._extraction_llm = ChatOpenAI(
+            model=extraction_model,
+            temperature=0.0,
+            reasoning_effort="minimal",
+            max_retries=1,
+            max_completion_tokens=1024,
+            timeout=30,
+        )
         self._max_steps = max_steps
         self._timeout_seconds = timeout_seconds
 
@@ -92,7 +113,7 @@ class InstagramScraper:
         task = self._build_task(url)
         logger.info("task built for %s (length=%s)", url, len(task))
 
-        history = await self._run_agent(task)
+        history = await self._run_agent(task, url)
 
         self._raise_for_login_redirect(history, url)
         self._raise_for_explicit_stop_signals(history, url)
@@ -116,30 +137,43 @@ class InstagramScraper:
         return f"""
 {self._system_prompt}
 
-Open this Instagram profile URL:
+Profile URL (already opening): {url}
 
-{url}
-
-Reliability rules:
-1. After navigating, wait until the page has fully finished loading before extracting data.
-2. Dismiss cookie / signup modals only when they block profile content.
-3. If Instagram redirects to a login or signup page, stop immediately and report LOGIN_REQUIRED.
-4. If the profile does not exist (page isn't available), stop immediately and report PROFILE_NOT_FOUND.
-5. If the account is private, stop immediately and report PRIVATE_PROFILE.
-6. Otherwise extract the public profile fields into the required structured output.
+Goal: extract the structured InstagramProfile from the loaded page and finish.
 """.strip()
 
-    async def _run_agent(self, task: str) -> AgentHistoryList[Any]:
+    async def _run_agent(
+        self,
+        task: str,
+        url: str,
+    ) -> AgentHistoryList[Any]:
         agent = Agent(
             task=task,
             llm=self._llm,
+            page_extraction_llm=self._extraction_llm,
             output_model_schema=InstagramProfile,
+            # Navigate before any LLM step to save one slow reasoning call.
+            initial_actions=[
+                {"navigate": {"url": url, "new_tab": False}},
+                {"wait": {"seconds": 2}},
+            ],
+            # Fast extraction path recommended by Browser Use docs.
+            flash_mode=True,
+            use_thinking=False,
+            use_judge=False,
+            enable_planning=False,
+            use_vision=False,
             max_failures=1,
-            directly_open_url=True,
+            max_actions_per_step=3,
+            final_response_after_failure=True,
+            directly_open_url=False,
+            llm_timeout=40,
+            step_timeout=50,
+            extend_system_message=_SPEED_PROMPT,
         )
 
         logger.info(
-            "Browser Use about to start (max_steps=%s, timeout=%ss)",
+            "Browser Use about to start (max_steps=%s, timeout=%ss, flash_mode=True)",
             self._max_steps,
             self._timeout_seconds,
         )
