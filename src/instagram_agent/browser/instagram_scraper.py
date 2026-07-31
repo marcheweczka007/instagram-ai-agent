@@ -1,7 +1,8 @@
-"""Production-ready Instagram profile scraper using Browser Use."""
+"""Instagram profile scraper using Browser Use (fail-fast)."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -15,22 +16,10 @@ from instagram_agent.browser.exceptions import (
     InstagramLoginRequiredError,
     InstagramPrivateProfileError,
     InstagramProfileNotFoundError,
-    InstagramScraperError,
-    InstagramSessionLostError,
-    InstagramStructuredOutputError,
 )
 from instagram_agent.domain.models import InstagramProfile
 
 logger = logging.getLogger(__name__)
-
-_SESSION_LOST_MARKERS: tuple[str, ...] = (
-    "browser not connected",
-    "target detached",
-    "no tabs remain",
-    "session closed",
-    "session lost",
-    "disconnected",
-)
 
 _LOGIN_URL_MARKERS: tuple[str, ...] = (
     "/accounts/login",
@@ -38,9 +27,7 @@ _LOGIN_URL_MARKERS: tuple[str, ...] = (
     "/accounts/emailsignup",
 )
 
-_LOGIN_TEXT_MARKERS: tuple[str, ...] = (
-    "login_required",
-)
+_LOGIN_TEXT_MARKERS: tuple[str, ...] = ("login_required",)
 
 _NOT_FOUND_MARKERS: tuple[str, ...] = (
     "profile_not_found",
@@ -57,13 +44,19 @@ _PRIVATE_MARKERS: tuple[str, ...] = (
 class InstagramScraper:
     """Scrape a public Instagram profile into an ``InstagramProfile``."""
 
-    def __init__(self, model: str = "gpt-5", max_steps: int = 40) -> None:
+    def __init__(
+        self,
+        model: str = "gpt-5",
+        max_steps: int = 5,
+        timeout_seconds: float = 60,
+    ) -> None:
         prompt_path = (
             Path(__file__).parent.parent / "prompts" / "scraper.md"
         )
         self._system_prompt: str = prompt_path.read_text(encoding="utf-8")
         self._llm = ChatOpenAI(model=model)
         self._max_steps = max_steps
+        self._timeout_seconds = timeout_seconds
 
     async def scrape(self, url: str) -> InstagramProfile:
         """Scrape an Instagram profile URL and return structured data."""
@@ -71,51 +64,33 @@ class InstagramScraper:
         logger.info("Starting Instagram scrape for %s", cleaned_url)
 
         try:
-            return await self._scrape_with_retry(cleaned_url)
-        except InstagramScraperError:
-            raise
+            profile = await self._scrape_once(cleaned_url)
         except Exception as exc:
-            logger.exception("Unexpected failure while scraping %s", cleaned_url)
-            raise InstagramScraperError(
-                f"Failed to scrape Instagram profile at {cleaned_url}: {exc}"
-            ) from exc
-
-    async def _scrape_with_retry(self, url: str) -> InstagramProfile:
-        try:
-            return await self._scrape_once(url)
-        except InstagramSessionLostError:
-            logger.warning(
-                "Browser session lost while scraping %s; retrying once",
-                url,
+            logger.exception(
+                "Instagram scrape failed for %s: %s",
+                cleaned_url,
+                exc,
             )
-            return await self._scrape_once(url)
+            raise
+
+        logger.info("Instagram scrape succeeded for %s", cleaned_url)
+        return profile
 
     async def _scrape_once(self, url: str) -> InstagramProfile:
         task = self._build_task(url)
         history = await self._run_agent(task)
 
-        # Hard failures first: login redirect or explicit agent stop signals.
         self._raise_for_login_redirect(history, url)
         self._raise_for_explicit_stop_signals(history, url)
-
-        profile = self._extract_structured_output(history, url)
-        if profile is not None:
-            return self._validate_profile(profile, url)
-
-        # No structured output: classify the failure precisely.
         self._raise_for_page_conditions(history, url)
 
-        if self._is_session_lost(history):
-            raise InstagramSessionLostError(
-                f"Browser session was lost while scraping {url}"
+        profile = self._extract_structured_output(history)
+        if profile is None:
+            raise RuntimeError(
+                "Browser Use did not return an InstagramProfile."
             )
 
-        final = history.final_result()
-        detail = f" Final agent result: {final}" if final else ""
-        raise InstagramStructuredOutputError(
-            "Browser Use did not return a structured InstagramProfile "
-            f"for {url}.{detail}"
-        )
+        return self._validate_profile(profile, url)
 
     def _build_task(self, url: str) -> str:
         return f"""
@@ -135,25 +110,34 @@ Reliability rules:
 """.strip()
 
     async def _run_agent(self, task: str) -> AgentHistoryList[Any]:
-        logger.debug("Creating Browser Use agent")
+        logger.debug(
+            "Creating Browser Use agent (max_steps=%s, timeout=%ss)",
+            self._max_steps,
+            self._timeout_seconds,
+        )
         agent = Agent(
             task=task,
             llm=self._llm,
             output_model_schema=InstagramProfile,
-            max_failures=3,
+            max_failures=1,
             directly_open_url=True,
         )
 
         try:
-            history = await agent.run(max_steps=self._max_steps)
-        except Exception as exc:
-            if self._text_has_markers(str(exc), _SESSION_LOST_MARKERS):
-                raise InstagramSessionLostError(
-                    f"Browser session lost during scrape: {exc}"
-                ) from exc
+            history = await asyncio.wait_for(
+                agent.run(max_steps=self._max_steps),
+                timeout=self._timeout_seconds,
+            )
+        except asyncio.TimeoutError as exc:
+            raise RuntimeError("Instagram scraping timed out.") from exc
+        except RuntimeError:
             raise
+        except Exception as exc:
+            raise RuntimeError(
+                f"Browser Use failed while scraping Instagram: {exc}"
+            ) from exc
 
-        logger.info(
+        logger.debug(
             "Browser Use finished in %s steps (success=%s)",
             history.number_of_steps(),
             history.is_successful(),
@@ -183,33 +167,25 @@ Reliability rules:
                 f"Scraped profile for {url} failed validation: {', '.join(errors)}"
             )
 
-        logger.info(
-            "Scraped profile '%s' (%s followers)",
-            profile.name,
-            profile.followers,
-        )
         return profile
 
     def _extract_structured_output(
         self,
         history: AgentHistoryList[Any],
-        url: str,
     ) -> InstagramProfile | None:
         try:
             profile = history.structured_output
         except ValidationError as exc:
-            raise InstagramStructuredOutputError(
-                "Browser Use returned structured output that could not be "
-                f"parsed as InstagramProfile for {url}: {exc}"
+            raise RuntimeError(
+                "Browser Use did not return an InstagramProfile."
             ) from exc
 
         if profile is None:
             return None
 
         if not isinstance(profile, InstagramProfile):
-            raise InstagramStructuredOutputError(
-                "Browser Use returned structured output of unexpected type "
-                f"{type(profile).__name__} for {url}"
+            raise RuntimeError(
+                "Browser Use did not return an InstagramProfile."
             )
 
         return profile
@@ -262,23 +238,6 @@ Reliability rules:
             raise InstagramPrivateProfileError(
                 f"Instagram profile is private: {url}"
             )
-
-    def _is_session_lost(self, history: AgentHistoryList[Any]) -> bool:
-        last_url = self._last_url(history)
-        if last_url and last_url.rstrip("/").endswith("about:blank"):
-            return True
-
-        # Only inspect the most recent errors so earlier recovered failures
-        # do not trigger a false session-lost retry.
-        recent_errors = [
-            error.lower()
-            for error in history.errors()[-3:]
-            if error
-        ]
-        return any(
-            self._text_has_markers(error, _SESSION_LOST_MARKERS)
-            for error in recent_errors
-        )
 
     @staticmethod
     def _normalize_url(url: str) -> str:
