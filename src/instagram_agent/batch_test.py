@@ -19,8 +19,8 @@ async def main() -> None:
         logging.exception("Batch analysis failed")
         return
 
-    for analysis in results:
-        print(analysis.model_dump_json(indent=2))
+    for result in results:
+        print(result.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":
