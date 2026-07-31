@@ -1,15 +1,15 @@
 from pathlib import Path
 
 from instagram_agent.agents.base import BaseAgent
-from instagram_agent.domain.models import InstagramProfile
-from instagram_agent.infrastructure.openai_client import create_client
+from instagram_agent.domain.models import (
+    InstagramProfile,
+    ProfileAnalysis,
+)
 
 
 class ScorerAgent(BaseAgent):
     def __init__(self):
         super().__init__()
-
-        self.client = create_client()
 
         prompt_path = (
             Path(__file__).parent.parent
@@ -19,7 +19,7 @@ class ScorerAgent(BaseAgent):
 
         self.system_prompt = prompt_path.read_text()
 
-    def score(self, profile: InstagramProfile):
+    def score(self, profile: InstagramProfile) -> ProfileAnalysis:
         prompt = f"""
 Name: {profile.name}
 
@@ -33,10 +33,19 @@ Recent posts:
 {chr(10).join(profile.recent_posts)}
 """
 
-        response = self.client.responses.create(
+        completion = self.client.chat.completions.parse(
             model="gpt-5",
-            instructions=self.system_prompt,
-            input=prompt,
+            messages=[
+                {
+                    "role": "system",
+                    "content": self.system_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            response_format=ProfileAnalysis,
         )
 
-        return response.output_text
+        return completion.choices[0].message.parsed
