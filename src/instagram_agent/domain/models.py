@@ -15,3 +15,10 @@ class ProfileAnalysis(BaseModel):
     reason: str
 
     comment: str
+
+
+class InstagramProfile(BaseModel):
+    name: str
+    bio: str
+    followers: int
+    recent_posts: list[str]
