@@ -17,10 +17,13 @@ async def main() -> None:
 
     results = await analyse_profiles(urls)
 
+    print(f"Number of results: {len(results)}")
+
+    for result in results:
+        print(result.profile.name)
+
     exporter = CsvExporter()
     exporter.export(results, "analysis_results.csv")
-
-    print("Export completed successfully.")
 
 
 if __name__ == "__main__":

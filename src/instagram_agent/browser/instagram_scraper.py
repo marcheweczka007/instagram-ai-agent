@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -61,36 +62,55 @@ class InstagramScraper:
     async def scrape(self, url: str) -> InstagramProfile:
         """Scrape an Instagram profile URL and return structured data."""
         cleaned_url = self._normalize_url(url)
-        logger.info("Starting Instagram scrape for %s", cleaned_url)
+        scrape_started = time.perf_counter()
+        logger.info("scrape() started for %s", cleaned_url)
 
         try:
             profile = await self._scrape_once(cleaned_url)
         except Exception as exc:
+            elapsed = time.perf_counter() - scrape_started
             logger.exception(
-                "Instagram scrape failed for %s: %s",
+                "Instagram scrape failed for %s after %.2fs: %s: %s",
                 cleaned_url,
+                elapsed,
+                type(exc).__name__,
                 exc,
             )
             raise
 
-        logger.info("Instagram scrape succeeded for %s", cleaned_url)
+        elapsed = time.perf_counter() - scrape_started
+        logger.info(
+            "scrape() completed successfully for %s in %.2fs",
+            cleaned_url,
+            elapsed,
+        )
         return profile
 
     async def _scrape_once(self, url: str) -> InstagramProfile:
+        logger.info("_scrape_once() entered for %s", url)
+
         task = self._build_task(url)
+        logger.info("task built for %s (length=%s)", url, len(task))
+
         history = await self._run_agent(task)
 
         self._raise_for_login_redirect(history, url)
         self._raise_for_explicit_stop_signals(history, url)
+        logger.info("login checks passed for %s", url)
+
         self._raise_for_page_conditions(history, url)
+        logger.info("page condition checks passed for %s", url)
 
         profile = self._extract_structured_output(history)
         if profile is None:
             raise RuntimeError(
                 "Browser Use did not return an InstagramProfile."
             )
+        logger.info("structured output extracted for %s", url)
 
-        return self._validate_profile(profile, url)
+        validated = self._validate_profile(profile, url)
+        logger.info("profile validation passed for %s", url)
+        return validated
 
     def _build_task(self, url: str) -> str:
         return f"""
@@ -110,11 +130,6 @@ Reliability rules:
 """.strip()
 
     async def _run_agent(self, task: str) -> AgentHistoryList[Any]:
-        logger.debug(
-            "Creating Browser Use agent (max_steps=%s, timeout=%ss)",
-            self._max_steps,
-            self._timeout_seconds,
-        )
         agent = Agent(
             task=task,
             llm=self._llm,
@@ -123,22 +138,52 @@ Reliability rules:
             directly_open_url=True,
         )
 
+        logger.info(
+            "Browser Use about to start (max_steps=%s, timeout=%ss)",
+            self._max_steps,
+            self._timeout_seconds,
+        )
+        agent_started = time.perf_counter()
+
         try:
             history = await asyncio.wait_for(
                 agent.run(max_steps=self._max_steps),
                 timeout=self._timeout_seconds,
             )
         except asyncio.TimeoutError as exc:
+            elapsed = time.perf_counter() - agent_started
+            logger.error(
+                "Browser Use timed out after %.2fs: %s: %s",
+                elapsed,
+                type(exc).__name__,
+                exc,
+            )
             raise RuntimeError("Instagram scraping timed out.") from exc
-        except RuntimeError:
+        except RuntimeError as exc:
+            elapsed = time.perf_counter() - agent_started
+            logger.error(
+                "Browser Use raised RuntimeError after %.2fs: %s: %s",
+                elapsed,
+                type(exc).__name__,
+                exc,
+            )
             raise
         except Exception as exc:
+            elapsed = time.perf_counter() - agent_started
+            logger.error(
+                "Browser Use failed after %.2fs: %s: %s",
+                elapsed,
+                type(exc).__name__,
+                exc,
+            )
             raise RuntimeError(
                 f"Browser Use failed while scraping Instagram: {exc}"
             ) from exc
 
-        logger.debug(
-            "Browser Use finished in %s steps (success=%s)",
+        elapsed = time.perf_counter() - agent_started
+        logger.info(
+            "Browser Use finished in %.2fs (%s steps, success=%s)",
+            elapsed,
             history.number_of_steps(),
             history.is_successful(),
         )
