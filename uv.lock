@@ -813,6 +813,7 @@ source = { editable = "." }
 dependencies = [
     { name = "browser-use" },
     { name = "openai" },
+    { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "rich" },
 ]
@@ -821,6 +822,7 @@ dependencies = [
 requires-dist = [
     { name = "browser-use", specifier = ">=0.13.7" },
     { name = "openai", specifier = ">=2.16.0" },
+    { name = "pydantic", specifier = ">=2.12.5" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "rich", specifier = ">=14.3.1" },
 ]
