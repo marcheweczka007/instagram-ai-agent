@@ -19,6 +19,8 @@ class ProfileAnalysis(BaseModel):
 
 class InstagramProfile(BaseModel):
     name: str
+    profile_url: str
     bio: str
     followers: int
+    following: int
     recent_posts: list[str]
