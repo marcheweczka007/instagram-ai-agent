@@ -1,18 +1,16 @@
-from instagram_agent.agents.scorer import ScorerAgent
-from instagram_agent.services.profile_loader import load_example_profile
+import asyncio
+import sys
+
+from instagram_agent.pipelines import analyse_profile
 
 
-def main():
-    profile = load_example_profile()
-
-    scorer = ScorerAgent()
-
-    result = scorer.score(profile)
-
-    print(result)
+async def main() -> None:
+    url = sys.argv[1] if len(sys.argv) > 1 else (
+        "https://www.instagram.com/upcycle.lab.jollyzu/"
+    )
+    analysis = await analyse_profile(url)
+    print(analysis.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":
-    main()
-
-    
+    asyncio.run(main())
