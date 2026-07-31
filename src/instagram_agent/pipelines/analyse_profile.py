@@ -3,10 +3,14 @@ from instagram_agent.browser.instagram_scraper import InstagramScraper
 from instagram_agent.domain.models import ProfileAnalysis
 
 
-async def analyse_profile(url: str) -> ProfileAnalysis:
+async def analyse_profile(
+    url: str,
+    scraper: InstagramScraper | None = None,
+    scorer: ScorerAgent | None = None,
+) -> ProfileAnalysis:
     """Scrape an Instagram profile and return a scored analysis."""
-    scraper = InstagramScraper()
-    scorer = ScorerAgent()
+    active_scraper = scraper or InstagramScraper()
+    active_scorer = scorer or ScorerAgent()
 
-    profile = await scraper.scrape(url)
-    return scorer.score(profile)
+    profile = await active_scraper.scrape(url)
+    return active_scorer.score(profile)
