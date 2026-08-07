@@ -21,13 +21,13 @@ def render_dashboard_page() -> None:
     st.divider()
     col, _ = st.columns([1, 2])
     with col:
-        if st.button(
+        st.button(
             "Start Marketing Session",
             type="primary",
             use_container_width=True,
-        ):
-            st.session_state.nav_page = "Discover"
-            st.rerun()
+            on_click=state.request_page,
+            args=("Discover",),
+        )
 
     st.divider()
     render_impact_tasks(snapshot)

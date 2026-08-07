@@ -25,6 +25,7 @@ PAGES = (
 )
 
 _DEFAULT_BRAND_URL = "https://www.instagram.com/upcycle.lab.jollyzu/"
+_PENDING_NAV_KEY = "pending_nav_page"
 
 
 def init_state() -> None:
@@ -47,8 +48,27 @@ def init_state() -> None:
         if key not in st.session_state:
             st.session_state[key] = value
 
+    # Apply queued navigation before any widget with key="nav_page" is created.
+    apply_pending_navigation()
+
     if not st.session_state.creators:
         st.session_state.creators = load_latest_results()
+
+
+def request_page(page: str) -> None:
+    """Queue a page change safely (call from button on_click callbacks)."""
+    if page not in PAGES:
+        raise ValueError(f"Unknown page: {page}")
+    st.session_state[_PENDING_NAV_KEY] = page
+
+
+def apply_pending_navigation() -> None:
+    """Copy pending_nav_page → nav_page before the sidebar radio is rendered."""
+    pending = st.session_state.pop(_PENDING_NAV_KEY, None)
+    if pending is None:
+        return
+    if pending in PAGES:
+        st.session_state.nav_page = pending
 
 
 def get_progress() -> SessionProgress:
