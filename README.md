@@ -30,8 +30,9 @@ Typical flow:
 
 ```text
 ┌──────────────────────────────┐
-│ CLI / pipelines              │
+│ CLI / Streamlit UI           │
 │  discover_and_research()     │
+│  MarketingSessionService     │
 │  analyse_profile(s)          │
 └──────────────┬───────────────┘
                │
@@ -62,6 +63,7 @@ Typical flow:
 
 ```text
 instagram-agent/
+├── app.py                 # Streamlit entrypoint
 ├── data/
 │   └── example_profile.json
 ├── outputs/
@@ -75,7 +77,8 @@ instagram-agent/
 │   ├── infrastructure/  # OpenAI client
 │   ├── pipelines/       # Orchestration
 │   ├── prompts/         # Agent prompts
-│   ├── services/        # CSV / JSON / report formatters
+│   ├── services/        # CSV / JSON / Notion / session runner
+│   ├── ui/              # Streamlit owner console components
 │   ├── cli.py           # Interactive menu
 │   └── config.py        # Settings
 ├── tests/
@@ -131,6 +134,22 @@ OPENAI_API_KEY=sk-...
 ---
 
 ## Usage
+
+### Owner console (Streamlit)
+
+```bash
+uv run streamlit run app.py
+```
+
+Opens a wide productivity UI for marketing sessions:
+
+- sidebar workflow toggles + session duration
+- live progress / logs
+- creator result cards
+- Notion / Markdown / CSV exports
+- post-session task list
+
+Business logic stays in `MarketingSessionService` — Streamlit only configures and displays.
 
 ### Interactive CLI
 

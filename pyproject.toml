@@ -17,6 +17,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.2",
     "rich>=14.3.1",
+    "streamlit>=1.61.1",
 ]
 
 [project.optional-dependencies]
