@@ -8,6 +8,7 @@ from instagram_agent.services.marketing_session import SessionOptions
 from instagram_agent.ui import state
 from instagram_agent.ui.components.progress_logs import render_progress_logs
 from instagram_agent.ui.components.session_runner import run_marketing_session
+from instagram_agent.ui.components.time_selector import render_available_time_slider
 
 
 def render_discover_page() -> None:
@@ -18,13 +19,9 @@ def render_discover_page() -> None:
         "Brand Instagram URL",
         key="brand_instagram_url",
     )
-    duration = st.select_slider(
-        "Session length",
-        options=[15, 30, 60],
-        value=st.session_state.duration_minutes,
-        format_func=lambda m: {15: "15 minutes", 30: "30 minutes", 60: "1 hour"}[m],
+    duration = render_available_time_slider(
+        help_text="Used as the discovery/research time budget for this run."
     )
-    st.session_state.duration_minutes = duration
 
     started = st.button(
         "Find Similar Creators",

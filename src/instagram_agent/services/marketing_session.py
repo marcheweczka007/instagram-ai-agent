@@ -43,7 +43,6 @@ logger = logging.getLogger(__name__)
 ProgressCallback = Callable[["SessionProgress"], None]
 
 _SECONDS_PER_CREATOR = 120.0
-_DURATION_CREATOR_CAPS: dict[int, int] = {15: 5, 30: 10, 60: 20}
 
 
 @dataclass(frozen=True)
@@ -160,7 +159,9 @@ def resolve_brand_and_query(brand_instagram_url: str) -> tuple[BrandProfile, str
 
 
 def creator_cap_for_duration(duration_minutes: int) -> int:
-    return _DURATION_CREATOR_CAPS.get(duration_minutes, max(3, duration_minutes // 3))
+    """Soft cap on creators analysed during discovery for a timed session."""
+    minutes = max(5, min(60, int(duration_minutes)))
+    return max(3, minutes // 3)
 
 
 def build_marketing_tasks(results: list[BrandResearchResult]) -> list[MarketingTask]:

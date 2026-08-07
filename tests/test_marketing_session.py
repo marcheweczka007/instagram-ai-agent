@@ -49,7 +49,9 @@ def _result(name: str, brand_fit: int) -> BrandResearchResult:
 def test_priority_and_caps() -> None:
     assert priority_from_brand_fit(9) == "High"
     assert creator_cap_for_duration(15) == 5
+    assert creator_cap_for_duration(30) == 10
     assert creator_cap_for_duration(60) == 20
+    assert creator_cap_for_duration(25) == 8
 
 
 def test_resolve_jollyzu_brand() -> None:
