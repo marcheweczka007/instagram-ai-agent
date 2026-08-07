@@ -38,6 +38,29 @@ REQUIRED_PROPERTIES: dict[str, str] = {
     "Last Analysed": "date",
 }
 
+# Types we treat as acceptable substitutes when preferred types cannot be created.
+_COMPATIBLE_TYPES: dict[str, set[str]] = {
+    "Status": {"status", "select"},
+}
+
+_PRIORITY_OPTIONS: tuple[dict[str, str], ...] = (
+    {"name": "High", "color": "red"},
+    {"name": "Medium", "color": "yellow"},
+    {"name": "Low", "color": "gray"},
+)
+
+_STATUS_SELECT_OPTIONS: tuple[dict[str, str], ...] = (
+    {"name": "New", "color": "blue"},
+    {"name": "In progress", "color": "yellow"},
+    {"name": "Done", "color": "green"},
+)
+
+_STATUS_STATUS_OPTIONS: tuple[dict[str, str], ...] = (
+    {"name": "New", "color": "blue", "group": "To-do"},
+    {"name": "In progress", "color": "yellow", "group": "In progress"},
+    {"name": "Done", "color": "green", "group": "Complete"},
+)
+
 _CSV_HEADERS: tuple[str, ...] = (
     "Creator",
     "Instagram URL",
@@ -74,12 +97,13 @@ class NotionExporter(CrmExporter):
         self._database_id = (database_id or cfg.notion_database_id).strip()
         self._client: Client | None = None
         self._data_source_id: str | None = None
+        self._status_property_type: str = "status"
         self._fallback_csv_path = Path(
             fallback_csv_path or default_csv_path("notion_fallback")
         )
 
     def connect(self) -> None:
-        """Create the Notion client and validate database schema."""
+        """Create the Notion client and ensure the CRM schema exists."""
         if not self._token:
             raise ValueError("NOTION_TOKEN is not configured. Set it in .env.")
         if not self._database_id:
@@ -87,12 +111,33 @@ class NotionExporter(CrmExporter):
 
         self._client = Client(auth=self._token)
         self._data_source_id = self._resolve_data_source_id()
-        self._validate_schema()
+        self.ensure_schema()
         logger.info(
             "Connected to Notion database %s (data_source=%s)",
             self._database_id,
             self._data_source_id,
         )
+
+    def ensure_schema(self) -> None:
+        """Create any missing required Notion properties automatically."""
+        properties = self._retrieve_properties()
+        self._ensure_title_property(properties)
+        properties = self._retrieve_properties()
+
+        for name, expected_type in REQUIRED_PROPERTIES.items():
+            if name == "Creator":
+                continue
+            if name in properties:
+                continue
+            created_type = self._create_property(name, expected_type)
+            logger.info("Created Notion property %r as type %s", name, created_type)
+
+        properties = self._retrieve_properties()
+        self._ensure_priority_options(properties)
+        properties = self._retrieve_properties()
+        self._ensure_status_new_option(properties)
+        properties = self._retrieve_properties()
+        self._validate_schema(properties)
 
     def upsert_creator(self, result: BrandResearchResult) -> None:
         """Create or update a creator page keyed by Instagram URL."""
@@ -165,7 +210,7 @@ class NotionExporter(CrmExporter):
             )
         return data_sources[0]["id"]
 
-    def _validate_schema(self) -> None:
+    def _retrieve_properties(self) -> dict[str, Any]:
         client = self._require_client()
         data_source_id = self._require_data_source_id()
         try:
@@ -174,8 +219,202 @@ class NotionExporter(CrmExporter):
             raise RuntimeError(
                 f"Unable to access Notion data source {data_source_id}: {exc}"
             ) from exc
+        return data_source.get("properties", {})
 
-        properties = data_source.get("properties", {})
+    def _update_properties(self, properties: dict[str, Any]) -> None:
+        client = self._require_client()
+        data_source_id = self._require_data_source_id()
+        client.data_sources.update(
+            data_source_id=data_source_id,
+            properties=properties,
+        )
+
+    def _ensure_title_property(self, properties: dict[str, Any]) -> None:
+        """Ensure the single title property is named Creator (cannot create a second)."""
+        if "Creator" in properties and properties["Creator"].get("type") == "title":
+            return
+
+        title_name = next(
+            (name for name, meta in properties.items() if meta.get("type") == "title"),
+            None,
+        )
+        if title_name is None:
+            raise RuntimeError(
+                "Notion database has no Title property. Create an empty database "
+                "in Notion (it always includes one Title column), then reconnect."
+            )
+
+        if title_name != "Creator":
+            self._update_properties({title_name: {"name": "Creator"}})
+            logger.info(
+                "Renamed Notion title property %r → 'Creator'",
+                title_name,
+            )
+
+    def _create_property(self, name: str, expected_type: str) -> str:
+        """Create one property; fall back to a compatible type when needed."""
+        if name == "Status":
+            return self._create_status_property()
+
+        schema = self._property_schema(name, expected_type)
+        try:
+            self._update_properties({name: schema})
+            return expected_type
+        except APIResponseError as exc:
+            raise RuntimeError(
+                f"Unable to create Notion property {name!r} "
+                f"(type {expected_type}): {exc}"
+            ) from exc
+
+    def _create_status_property(self) -> str:
+        """Prefer Status type; fall back to Select if Status cannot be created."""
+        try:
+            self._update_properties(
+                {
+                    "Status": {
+                        "type": "status",
+                        "status": {"options": list(_STATUS_STATUS_OPTIONS)},
+                    }
+                }
+            )
+            self._status_property_type = "status"
+            return "status"
+        except APIResponseError as status_exc:
+            logger.warning(
+                "Notion Status property type could not be created (%s); "
+                "falling back to Select",
+                status_exc,
+            )
+            try:
+                self._update_properties(
+                    {
+                        "Status": {
+                            "type": "select",
+                            "select": {"options": list(_STATUS_SELECT_OPTIONS)},
+                        }
+                    }
+                )
+            except APIResponseError as select_exc:
+                raise RuntimeError(
+                    "Unable to create Notion Status property as status or select: "
+                    f"{select_exc}"
+                ) from select_exc
+            self._status_property_type = "select"
+            return "select"
+
+    @staticmethod
+    def _property_schema(name: str, property_type: str) -> dict[str, Any]:
+        if property_type == "number":
+            return {"type": "number", "number": {}}
+        if property_type == "url":
+            return {"type": "url", "url": {}}
+        if property_type == "rich_text":
+            return {"type": "rich_text", "rich_text": {}}
+        if property_type == "date":
+            return {"type": "date", "date": {}}
+        if property_type == "select" and name == "Priority":
+            return {
+                "type": "select",
+                "select": {"options": list(_PRIORITY_OPTIONS)},
+            }
+        if property_type == "select":
+            return {"type": "select", "select": {"options": []}}
+        if property_type == "status":
+            return {
+                "type": "status",
+                "status": {"options": list(_STATUS_STATUS_OPTIONS)},
+            }
+        raise ValueError(
+            f"Unsupported Notion property type for auto-create: {property_type}"
+        )
+
+    def _ensure_priority_options(self, properties: dict[str, Any]) -> None:
+        meta = properties.get("Priority")
+        if not meta or meta.get("type") != "select":
+            return
+        existing = {
+            option.get("name")
+            for option in meta.get("select", {}).get("options", [])
+            if option.get("name")
+        }
+        missing = [
+            option for option in _PRIORITY_OPTIONS if option["name"] not in existing
+        ]
+        if not missing:
+            return
+        # Replacing options with the full desired set keeps existing names stable.
+        combined = {option["name"]: option for option in _PRIORITY_OPTIONS}
+        for option in meta.get("select", {}).get("options", []):
+            name = option.get("name")
+            if name and name not in combined:
+                combined[name] = {"name": name}
+        self._update_properties(
+            {
+                "Priority": {
+                    "select": {"options": list(combined.values())},
+                }
+            }
+        )
+        logger.info("Ensured Priority select options: High, Medium, Low")
+
+    def _ensure_status_new_option(self, properties: dict[str, Any]) -> None:
+        meta = properties.get("Status")
+        if not meta:
+            return
+        prop_type = meta.get("type")
+        if prop_type == "status":
+            self._status_property_type = "status"
+            options = meta.get("status", {}).get("options", [])
+            names = {option.get("name") for option in options if option.get("name")}
+            if "New" in names:
+                return
+            # Keep existing options and add New in the To-do group.
+            updated = [
+                {"name": option["name"], "color": option.get("color", "default")}
+                for option in options
+                if option.get("name")
+            ]
+            updated.append({"name": "New", "color": "blue", "group": "To-do"})
+            try:
+                self._update_properties({"Status": {"status": {"options": updated}}})
+                logger.info("Added Status option 'New'")
+            except APIResponseError as exc:
+                logger.warning(
+                    "Could not add Status option 'New' automatically (%s). "
+                    "Add it in the Notion UI, or rename an existing option to New.",
+                    exc,
+                )
+            return
+
+        if prop_type == "select":
+            self._status_property_type = "select"
+            options = meta.get("select", {}).get("options", [])
+            names = {option.get("name") for option in options if option.get("name")}
+            if "New" in names:
+                return
+            combined = {
+                option["name"]: {"name": option["name"]}
+                for option in options
+                if option.get("name")
+            }
+            for option in _STATUS_SELECT_OPTIONS:
+                combined.setdefault(option["name"], option)
+            try:
+                self._update_properties(
+                    {"Status": {"select": {"options": list(combined.values())}}}
+                )
+                logger.info("Added Status select option 'New'")
+            except APIResponseError as exc:
+                logger.warning(
+                    "Could not add Status select option 'New' automatically (%s)",
+                    exc,
+                )
+
+    def _validate_schema(self, properties: dict[str, Any] | None = None) -> None:
+        """Fail clearly if required properties are still missing or incompatible."""
+        properties = (
+            properties if properties is not None else self._retrieve_properties()
+        )
         missing: list[str] = []
         wrong_type: list[str] = []
 
@@ -184,10 +423,13 @@ class NotionExporter(CrmExporter):
                 missing.append(name)
                 continue
             actual_type = properties[name].get("type")
-            if actual_type != expected_type:
+            allowed = _COMPATIBLE_TYPES.get(name, {expected_type})
+            if actual_type not in allowed:
                 wrong_type.append(
                     f"{name} (expected {expected_type}, got {actual_type})"
                 )
+            if name == "Status" and actual_type in {"status", "select"}:
+                self._status_property_type = actual_type
 
         if missing or wrong_type:
             parts: list[str] = []
@@ -196,7 +438,8 @@ class NotionExporter(CrmExporter):
             if wrong_type:
                 parts.append("Wrong property types: " + ", ".join(sorted(wrong_type)))
             raise RuntimeError(
-                "Notion database schema is incomplete. " + " ".join(parts)
+                "Notion database schema is incomplete after ensure_schema(). "
+                + " ".join(parts)
             )
 
     def _build_properties(
@@ -227,7 +470,10 @@ class NotionExporter(CrmExporter):
             "Last Analysed": {"date": {"start": datetime.now(UTC).date().isoformat()}},
         }
         if include_status:
-            properties["Status"] = {"status": {"name": "New"}}
+            if self._status_property_type == "select":
+                properties["Status"] = {"select": {"name": "New"}}
+            else:
+                properties["Status"] = {"status": {"name": "New"}}
         return properties
 
     def _append_csv_fallback(self, result: BrandResearchResult) -> None:

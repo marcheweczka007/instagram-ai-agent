@@ -249,20 +249,22 @@ Use the 32-character ID (with or without dashes).
 
 Without this step, API calls will fail with permission errors.
 
-### 5. Expected database schema
+### 5. Database schema (auto-created)
 
-Create these properties exactly (names matter):
+You only need an empty Notion database connected to the integration.
+
+On `connect()`, the app calls `ensure_schema()` and automatically creates any missing properties:
 
 | Property | Type | Notes |
 |----------|------|------|
-| Creator | Title | |
+| Creator | Title | Renames the database's existing Title column if needed |
 | Instagram URL | URL | Unique key used for upserts |
 | Followers | Number | |
 | Score | Number | |
 | Brand Fit | Number | |
 | Confidence | Number | |
 | Priority | Select | Options: `High`, `Medium`, `Low` |
-| Status | Status | Include option `New` (user-managed afterwards) |
+| Status | Status | Option `New` on create; falls back to Select if needed |
 | Suggested Comment | Rich text | |
 | Suggested DM | Rich text | |
 | First Outreach Angle | Rich text | |
@@ -271,6 +273,8 @@ Create these properties exactly (names matter):
 | Weaknesses | Rich text | |
 | AI Notes | Rich text | |
 | Last Analysed | Date | |
+
+Manual property setup is not required.
 
 ### 6. Enable in `.env`
 
