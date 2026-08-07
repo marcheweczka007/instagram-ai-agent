@@ -31,3 +31,12 @@ class AnalysisResult(BaseModel):
 
     profile: InstagramProfile
     analysis: ProfileAnalysis
+
+
+class DiscoveryResult(BaseModel):
+    """Structured output from Instagram profile discovery."""
+
+    profile_urls: list[str] = Field(
+        default_factory=list,
+        description="Instagram profile URLs discovered for the search query.",
+    )
