@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from browser_use import Agent, ChatOpenAI
+from browser_use import Agent
 from browser_use.agent.views import AgentHistoryList
 from pydantic import ValidationError
 
@@ -18,6 +18,8 @@ from instagram_agent.browser.exceptions import (
     InstagramPrivateProfileError,
     InstagramProfileNotFoundError,
 )
+from instagram_agent.browser.llm import build_chat_openai
+from instagram_agent.config import get_settings
 from instagram_agent.domain.models import InstagramProfile
 
 logger = logging.getLogger(__name__)
@@ -53,32 +55,30 @@ class InstagramScraper:
 
     def __init__(
         self,
-        model: str = "gpt-5",
-        extraction_model: str = "gpt-5-mini",
-        max_steps: int = 8,
-        timeout_seconds: float = 60,
+        model: str | None = None,
+        extraction_model: str | None = None,
+        max_steps: int | None = None,
+        timeout_seconds: float | None = None,
     ) -> None:
+        settings = get_settings()
         prompt_path = Path(__file__).parent.parent / "prompts" / "scraper.md"
         self._system_prompt: str = prompt_path.read_text(encoding="utf-8")
-        # Low reasoning + few retries: LLM waits were the timeout bottleneck.
-        self._llm = ChatOpenAI(
-            model=model,
-            temperature=0.0,
-            reasoning_effort="minimal",
-            max_retries=1,
-            max_completion_tokens=2048,
-            timeout=40,
-        )
-        self._extraction_llm = ChatOpenAI(
+        self._llm = build_chat_openai(model=model, settings=settings)
+        self._extraction_llm = build_chat_openai(
             model=extraction_model,
-            temperature=0.0,
-            reasoning_effort="minimal",
-            max_retries=1,
-            max_completion_tokens=1024,
-            timeout=30,
+            extraction=True,
+            settings=settings,
         )
-        self._max_steps = max_steps
-        self._timeout_seconds = timeout_seconds
+        self._max_steps = (
+            max_steps if max_steps is not None else settings.browser_max_steps
+        )
+        self._timeout_seconds = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else settings.browser_timeout_seconds
+        )
+        self._llm_timeout = settings.llm_call_timeout_seconds
+        self._step_timeout = settings.step_timeout_seconds
 
     async def scrape(self, url: str) -> InstagramProfile:
         """Scrape an Instagram profile URL and return structured data."""
@@ -91,11 +91,10 @@ class InstagramScraper:
         except Exception as exc:
             elapsed = time.perf_counter() - scrape_started
             logger.exception(
-                "Instagram scrape failed for %s after %.2fs: %s: %s",
+                "Instagram scrape failed for %s after %.2fs (%s)",
                 cleaned_url,
                 elapsed,
                 type(exc).__name__,
-                exc,
             )
             raise
 
@@ -124,9 +123,7 @@ class InstagramScraper:
 
         profile = self._extract_structured_output(history)
         if profile is None:
-            raise RuntimeError(
-                "Browser Use did not return an InstagramProfile."
-            )
+            raise RuntimeError("Browser Use did not return an InstagramProfile.")
         logger.info("structured output extracted for %s", url)
 
         validated = self._validate_profile(profile, url)
@@ -167,8 +164,8 @@ Goal: extract the structured InstagramProfile from the loaded page and finish.
             max_actions_per_step=3,
             final_response_after_failure=True,
             directly_open_url=False,
-            llm_timeout=40,
-            step_timeout=50,
+            llm_timeout=self._llm_timeout,
+            step_timeout=self._step_timeout,
             extend_system_message=_SPEED_PROMPT,
         )
 
@@ -184,7 +181,7 @@ Goal: extract the structured InstagramProfile from the loaded page and finish.
                 agent.run(max_steps=self._max_steps),
                 timeout=self._timeout_seconds,
             )
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             elapsed = time.perf_counter() - agent_started
             logger.error(
                 "Browser Use timed out after %.2fs: %s: %s",
@@ -263,9 +260,7 @@ Goal: extract the structured InstagramProfile from the loaded page and finish.
             return None
 
         if not isinstance(profile, InstagramProfile):
-            raise RuntimeError(
-                "Browser Use did not return an InstagramProfile."
-            )
+            raise TypeError("Browser Use did not return an InstagramProfile.")
 
         return profile
 
@@ -297,9 +292,7 @@ Goal: extract the structured InstagramProfile from the loaded page and finish.
                 f"Instagram profile does not exist: {url}"
             )
         if "private_profile" in final_text:
-            raise InstagramPrivateProfileError(
-                f"Instagram profile is private: {url}"
-            )
+            raise InstagramPrivateProfileError(f"Instagram profile is private: {url}")
 
     def _raise_for_page_conditions(
         self,
@@ -314,9 +307,7 @@ Goal: extract the structured InstagramProfile from the loaded page and finish.
             )
 
         if self._text_has_markers(history_text, _PRIVATE_MARKERS):
-            raise InstagramPrivateProfileError(
-                f"Instagram profile is private: {url}"
-            )
+            raise InstagramPrivateProfileError(f"Instagram profile is private: {url}")
 
     @staticmethod
     def _normalize_url(url: str) -> str:
@@ -325,9 +316,7 @@ Goal: extract the structured InstagramProfile from the loaded page and finish.
 
         cleaned = url.strip()
         if "instagram.com" not in cleaned.lower():
-            raise ValueError(
-                f"url must be an Instagram profile URL, got: {cleaned!r}"
-            )
+            raise ValueError(f"url must be an Instagram profile URL, got: {cleaned!r}")
         return cleaned
 
     @staticmethod

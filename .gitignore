@@ -20,6 +20,15 @@ __pycache__/
 # Python tooling
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 
-# Output
+# Runtime outputs
 output/
+outputs/
+*.csv
+*.md
+!README.md
+!CONTRIBUTING.md
+!CHANGELOG.md
+!PROJECT_REVIEW.md
+!src/instagram_agent/prompts/*.md

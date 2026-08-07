@@ -2,35 +2,25 @@
 
 from __future__ import annotations
 
-import logging
-
 from instagram_agent.agents.research import ResearchAgent
 from instagram_agent.domain.models import (
     AnalysisResult,
     BrandProfile,
     ResearchAnalysis,
 )
-
-logger = logging.getLogger(__name__)
+from instagram_agent.logging_utils import pipeline_logging
 
 
 async def research_profile(
     brand: BrandProfile,
     result: AnalysisResult,
+    researcher: ResearchAgent | None = None,
 ) -> ResearchAnalysis:
     """Evaluate how well an analysed creator matches ``brand``."""
-    logger.info(
-        "research_profile started: brand=%s creator=%s",
-        brand.name,
-        result.profile.name,
-    )
-    research = ResearchAgent().research(
-        brand=brand,
-        profile=result.profile,
-        analysis=result.analysis,
-    )
-    logger.info(
-        "research_profile completed: brand_fit=%s",
-        research.brand_fit,
-    )
-    return research
+    with pipeline_logging("research_profile"):
+        agent = researcher or ResearchAgent()
+        return agent.research(
+            brand=brand,
+            profile=result.profile,
+            analysis=result.analysis,
+        )

@@ -18,7 +18,7 @@ async def main():
         try:
             profile = await scraper.scrape(url)
             print(profile.model_dump_json(indent=2))
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Error: {e}")
 
 

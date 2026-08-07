@@ -7,6 +7,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
+from instagram_agent.config import get_settings
 from instagram_agent.domain.models import BrandProfile, BrandResearchResult
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class ReportGenerator:
             brand.name,
             len(results),
         )
+        settings = get_settings()
         ranked = sorted(
             results,
             key=lambda item: item.research.brand_fit,
@@ -34,8 +36,14 @@ class ReportGenerator:
         sections = [
             self._render_header(brand, ranked),
             self._render_top_matches(ranked),
-            self._render_recommended(ranked),
-            self._render_to_avoid(ranked),
+            self._render_recommended(
+                ranked,
+                min_fit=settings.recommend_brand_fit_min,
+            ),
+            self._render_to_avoid(
+                ranked,
+                max_fit=settings.avoid_brand_fit_max,
+            ),
             self._render_overall_insights(brand, ranked),
         ]
         report = "\n\n".join(section for section in sections if section)
@@ -108,11 +116,16 @@ class ReportGenerator:
             f"**First Outreach Angle:** {research.first_outreach_angle}",
         ]
 
-    def _render_recommended(self, results: list[BrandResearchResult]) -> str:
-        recommended = [item for item in results if item.research.brand_fit >= 8]
+    def _render_recommended(
+        self,
+        results: list[BrandResearchResult],
+        *,
+        min_fit: int,
+    ) -> str:
+        recommended = [item for item in results if item.research.brand_fit >= min_fit]
         lines = ["## Recommended Creators", ""]
         if not recommended:
-            lines.append("_No creators scored brand fit 8 or higher._")
+            lines.append(f"_No creators scored brand fit {min_fit} or higher._")
             lines.extend(["", "---"])
             return "\n".join(lines)
 
@@ -126,11 +139,16 @@ class ReportGenerator:
         lines.extend(["", "---"])
         return "\n".join(lines)
 
-    def _render_to_avoid(self, results: list[BrandResearchResult]) -> str:
-        weak = [item for item in results if item.research.brand_fit <= 4]
+    def _render_to_avoid(
+        self,
+        results: list[BrandResearchResult],
+        *,
+        max_fit: int,
+    ) -> str:
+        weak = [item for item in results if item.research.brand_fit <= max_fit]
         lines = ["## Creators To Avoid", ""]
         if not weak:
-            lines.append("_No creators scored brand fit 4 or lower._")
+            lines.append(f"_No creators scored brand fit {max_fit} or lower._")
             lines.extend(["", "---"])
             return "\n".join(lines)
 

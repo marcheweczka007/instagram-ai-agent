@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from instagram_agent.agents.base import BaseAgent
+from instagram_agent.config import get_settings
 from instagram_agent.domain.models import (
     BrandProfile,
     InstagramProfile,
@@ -24,10 +25,11 @@ class ResearchAgent(BaseAgent):
     YouTube / etc. into the same research call without changing callers.
     """
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, client=None) -> None:
+        super().__init__(client=client)
         prompt_path = Path(__file__).parent.parent / "prompts" / "research.md"
         self.system_prompt = prompt_path.read_text(encoding="utf-8")
+        self._model = get_settings().openai_model
 
     def research(
         self,
@@ -43,7 +45,7 @@ class ResearchAgent(BaseAgent):
         )
 
         completion = self.client.chat.completions.parse(
-            model="gpt-5",
+            model=self._model,
             messages=[
                 {"role": "system", "content": self.system_prompt},
                 {

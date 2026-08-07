@@ -9,10 +9,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus, urlparse
 
-from browser_use import Agent, ChatOpenAI
+from browser_use import Agent
 from browser_use.agent.views import AgentHistoryList
 from pydantic import ValidationError
 
+from instagram_agent.browser.llm import build_chat_openai
+from instagram_agent.config import get_settings
 from instagram_agent.domain.models import DiscoveryResult
 
 logger = logging.getLogger(__name__)
@@ -49,33 +51,34 @@ class DiscoveryAgent:
 
     def __init__(
         self,
-        model: str = "gpt-5",
-        extraction_model: str = "gpt-5-mini",
-        max_steps: int = 8,
-        timeout_seconds: float = 90,
-        max_results: int = 20,
+        model: str | None = None,
+        extraction_model: str | None = None,
+        max_steps: int | None = None,
+        timeout_seconds: float | None = None,
+        max_results: int | None = None,
     ) -> None:
+        settings = get_settings()
         prompt_path = Path(__file__).parent.parent / "prompts" / "discovery.md"
         self._system_prompt = prompt_path.read_text(encoding="utf-8")
-        self._llm = ChatOpenAI(
-            model=model,
-            temperature=0.0,
-            reasoning_effort="minimal",
-            max_retries=1,
-            max_completion_tokens=2048,
-            timeout=40,
-        )
-        self._extraction_llm = ChatOpenAI(
+        self._llm = build_chat_openai(model=model, settings=settings)
+        self._extraction_llm = build_chat_openai(
             model=extraction_model,
-            temperature=0.0,
-            reasoning_effort="minimal",
-            max_retries=1,
-            max_completion_tokens=1024,
-            timeout=30,
+            extraction=True,
+            settings=settings,
         )
-        self._max_steps = max_steps
-        self._timeout_seconds = timeout_seconds
-        self._max_results = max_results
+        self._max_steps = (
+            max_steps if max_steps is not None else settings.browser_max_steps
+        )
+        self._timeout_seconds = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else settings.discovery_timeout_seconds
+        )
+        self._max_results = (
+            max_results if max_results is not None else settings.discovery_max_results
+        )
+        self._llm_timeout = settings.llm_call_timeout_seconds
+        self._step_timeout = settings.step_timeout_seconds
 
     async def discover(self, query: str) -> DiscoveryResult:
         """Discover Instagram profile URLs for ``query``."""
@@ -130,8 +133,8 @@ Extract Instagram profile URLs from the first results page into DiscoveryResult.
             max_actions_per_step=3,
             final_response_after_failure=True,
             directly_open_url=False,
-            llm_timeout=40,
-            step_timeout=50,
+            llm_timeout=self._llm_timeout,
+            step_timeout=self._step_timeout,
             extend_system_message=_SPEED_PROMPT,
         )
 

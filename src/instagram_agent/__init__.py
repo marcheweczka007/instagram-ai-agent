@@ -1,2 +1,5 @@
-def main() -> None:
-    print("Hello from instagram-agent!")
+"""Package entrypoint."""
+
+from instagram_agent.cli import main
+
+__all__ = ["main"]

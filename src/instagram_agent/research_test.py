@@ -1,39 +1,13 @@
 import asyncio
 import logging
 
-from instagram_agent.domain.models import BrandProfile
+from instagram_agent.fixtures import build_jollyzu_brand
+from instagram_agent.logging_utils import setup_logging
 from instagram_agent.pipelines.analyse_profile import analyse_profile
 from instagram_agent.pipelines.research_profile import research_profile
 
-logging.basicConfig(level=logging.INFO)
+setup_logging()
 logger = logging.getLogger(__name__)
-
-
-def build_jollyzu_brand() -> BrandProfile:
-    return BrandProfile(
-        name="JollyZu",
-        description=(
-            "Handmade colourful upcycled bags crafted for eco-conscious "
-            "creative women who love slow fashion."
-        ),
-        target_audience=[
-            "Women 25-40",
-            "Eco-conscious shoppers",
-            "Creative makers and designers",
-            "Slow fashion community",
-        ],
-        values=[
-            "Sustainability",
-            "Craftsmanship",
-            "Circular economy",
-            "Colour",
-            "Creativity",
-        ],
-        products=[
-            "Handmade colourful upcycled bags",
-        ],
-        tone_of_voice="Friendly, creative, and authentic",
-    )
 
 
 async def main() -> None:
