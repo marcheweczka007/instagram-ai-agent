@@ -72,6 +72,10 @@ def get_settings() -> Settings:
         discovery_timeout_seconds=float(os.getenv("DISCOVERY_TIMEOUT_SECONDS", "90")),
         discovery_max_results=int(os.getenv("DISCOVERY_MAX_RESULTS", "20")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        output_dir=Path(os.getenv("OUTPUT_DIR", "outputs")),
+        csv_dir=Path(os.getenv("OUTPUT_DIR", "outputs")) / "csv",
+        reports_dir=Path(os.getenv("OUTPUT_DIR", "outputs")) / "reports",
+        logs_dir=Path(os.getenv("OUTPUT_DIR", "outputs")) / "logs",
         google_sheets_credentials_path=Path(
             os.getenv("GOOGLE_SHEETS_CREDENTIALS_PATH", "credentials.json")
         ),

@@ -1,1 +1,1 @@
-"""Reusable Streamlit UI components."""
+"""Reusable Streamlit UI components for the marketing workspace."""

@@ -1,4 +1,4 @@
-"""Streamlit UI package for the project owner console."""
+"""Streamlit UI package for the daily marketing workspace."""
 
 from instagram_agent.ui.main import render_app
 

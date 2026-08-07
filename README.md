@@ -77,8 +77,10 @@ instagram-agent/
 │   ├── infrastructure/  # OpenAI client
 │   ├── pipelines/       # Orchestration
 │   ├── prompts/         # Agent prompts
-│   ├── services/        # CSV / JSON / Notion / session runner
-│   ├── ui/              # Streamlit owner console components
+│   ├── services/        # CSV / JSON / Notion / session / workspace
+│   ├── ui/              # Streamlit marketing workspace
+│   │   ├── components/  # Reusable widgets
+│   │   └── pages/       # Dashboard, Discover, …
 │   ├── cli.py           # Interactive menu
 │   └── config.py        # Settings
 ├── tests/
@@ -141,15 +143,19 @@ OPENAI_API_KEY=sk-...
 uv run streamlit run app.py
 ```
 
-Opens a wide productivity UI for marketing sessions:
+Opens the **Marketing Workspace** at `http://localhost:8501`:
 
-- sidebar workflow toggles + session duration
-- live progress / logs
-- creator result cards
-- Notion / Markdown / CSV exports
-- post-session task list
+| Page | Purpose |
+|------|---------|
+| Dashboard | Greeting, today's stats, weekly goal, impact tasks |
+| Discover | Find similar creators with live progress |
+| Creator Database | Cards for analysed creators |
+| Comments | Ready-to-copy comments |
+| Outreach | Ready-to-copy DMs |
+| Reports | Markdown / CSV / JSON / Notion |
+| Settings | Model, Notion, headless, output dir |
 
-Business logic stays in `MarketingSessionService` — Streamlit only configures and displays.
+UI code lives in `src/instagram_agent/ui/` and only calls `MarketingSessionService` / workspace helpers — no pipeline logic in Streamlit.
 
 ### Interactive CLI
 

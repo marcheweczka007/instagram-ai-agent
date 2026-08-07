@@ -1,4 +1,4 @@
-"""Streamlit entrypoint for the Instagram Brand Research owner console.
+"""Streamlit entrypoint for the daily marketing workspace.
 
 Run:
     uv run streamlit run app.py
