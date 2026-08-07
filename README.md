@@ -120,6 +120,10 @@ OPENAI_API_KEY=sk-...
 | `DISCOVERY_TIMEOUT_SECONDS` | `90` | Discovery wall timeout |
 | `DISCOVERY_MAX_RESULTS` | `20` | Max discovered URLs |
 | `LOG_LEVEL` | `INFO` | Logging verbosity |
+| `GOOGLE_SHEETS_ENABLED` | `false` | Enable live Sheets export |
+| `GOOGLE_SHEETS_CREDENTIALS_PATH` | `credentials.json` | Service account JSON path |
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | empty | Target spreadsheet ID |
+| `GOOGLE_SHEETS_WORKSHEET_NAME` | `Creators` | Worksheet / tab name |
 
 ---
 
@@ -189,11 +193,73 @@ Each brand research run can produce:
 
 | Artifact | Format | Purpose |
 |----------|--------|---------|
-| Ranked creators | CSV | Spreadsheet review |
+| Live creator rows | Google Sheets | Primary collaborative workspace |
+| Ranked creators | CSV | Local backup / offline review |
 | Brand research report | Markdown | Manager-readable narrative |
 | Summary | JSON | API / automation handoff |
 
 Results are sorted by `brand_fit` descending.
+
+When Google Sheets is configured, each creator is **appended immediately** after research.
+If Sheets fails, the exporter automatically falls back to CSV (`outputs/csv/google_sheets_fallback.csv`).
+
+---
+
+## Google Sheets setup
+
+Google Sheets is the preferred live output. CSV remains the automatic fallback.
+
+### 1. Create a Google Cloud project
+
+1. Open [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project (or select an existing one)
+
+### 2. Enable the Sheets API
+
+1. Go to **APIs & Services → Library**
+2. Enable **Google Sheets API**
+3. Also enable **Google Drive API** (required for service-account spreadsheet access)
+
+### 3. Create a Service Account
+
+1. Go to **APIs & Services → Credentials**
+2. Click **Create credentials → Service account**
+3. Name it (for example `instagram-agent-sheets`)
+4. Skip optional permissions unless your org requires them
+
+### 4. Download `credentials.json`
+
+1. Open the service account
+2. Go to **Keys → Add key → Create new key → JSON**
+3. Save the file as `credentials.json` in the project root  
+   (path configurable via `GOOGLE_SHEETS_CREDENTIALS_PATH`)
+4. Never commit this file — it is gitignored
+
+### 5. Share the spreadsheet with the Service Account email
+
+1. Create a Google Sheet (or open an existing one)
+2. Copy the spreadsheet ID from the URL:  
+   `https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit`
+3. Share the sheet with the service account email  
+   (looks like `...@....iam.gserviceaccount.com`) as **Editor**
+4. Put the ID in `.env`:
+
+```bash
+GOOGLE_SHEETS_ENABLED=true
+GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id_here
+GOOGLE_SHEETS_WORKSHEET_NAME=Creators
+GOOGLE_SHEETS_CREDENTIALS_PATH=credentials.json
+```
+
+### 6. Test
+
+```bash
+uv run python -m instagram_agent.google_sheets_test
+```
+
+Expected columns:
+
+`Creator | Instagram URL | Followers | Score | Brand Fit | Confidence | Suggested Comment | Suggested DM | Status | Notes`
 
 ---
 

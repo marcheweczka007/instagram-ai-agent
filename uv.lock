@@ -727,6 +727,19 @@ wheels = [
 ]
 
 [[package]]
+name = "gspread"
+version = "6.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-auth" },
+    { name = "google-auth-oauthlib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/91/83/42d1d813822ed016d77aabadc99b09de3b5bd68532fd6bae23fd62347c41/gspread-6.2.1.tar.gz", hash = "sha256:2c7c99f7c32ebea6ec0d36f2d5cbe8a2be5e8f2a48bde87ad1ea203eff32bd03", size = 82590, upload-time = "2025-05-14T15:56:25.254Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/76/563fb20dedd0e12794d9a12cfe0198458cc0501fdc7b034eee2166d035d5/gspread-6.2.1-py3-none-any.whl", hash = "sha256:6d4ec9f1c23ae3c704a9219026dac01f2b328ac70b96f1495055d453c4c184db", size = 59977, upload-time = "2025-05-14T15:56:24.014Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -821,6 +834,8 @@ version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "browser-use" },
+    { name = "google-auth" },
+    { name = "gspread" },
     { name = "openai" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -836,6 +851,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "browser-use", specifier = ">=0.13.7" },
+    { name = "google-auth", specifier = ">=2.0.0" },
+    { name = "gspread", specifier = ">=6.0.0" },
     { name = "openai", specifier = ">=2.16.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },

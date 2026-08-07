@@ -10,6 +10,8 @@ requires-python = ">=3.13"
 license = { text = "MIT" }
 dependencies = [
     "browser-use>=0.13.7",
+    "google-auth>=2.0.0",
+    "gspread>=6.0.0",
     "openai>=2.16.0",
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.2",

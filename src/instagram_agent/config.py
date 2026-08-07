@@ -41,6 +41,11 @@ class Settings:
     recommend_brand_fit_min: int = 8
     avoid_brand_fit_max: int = 4
 
+    google_sheets_credentials_path: Path = Path("credentials.json")
+    google_sheets_spreadsheet_id: str = ""
+    google_sheets_worksheet_name: str = "Creators"
+    google_sheets_enabled: bool = False
+
     def ensure_output_dirs(self) -> None:
         """Create standard output folders if missing."""
         for path in (self.output_dir, self.csv_dir, self.reports_dir, self.logs_dir):
@@ -63,6 +68,16 @@ def get_settings() -> Settings:
         discovery_timeout_seconds=float(os.getenv("DISCOVERY_TIMEOUT_SECONDS", "90")),
         discovery_max_results=int(os.getenv("DISCOVERY_MAX_RESULTS", "20")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        google_sheets_credentials_path=Path(
+            os.getenv("GOOGLE_SHEETS_CREDENTIALS_PATH", "credentials.json")
+        ),
+        google_sheets_spreadsheet_id=os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "").strip(),
+        google_sheets_worksheet_name=os.getenv(
+            "GOOGLE_SHEETS_WORKSHEET_NAME", "Creators"
+        ).strip()
+        or "Creators",
+        google_sheets_enabled=os.getenv("GOOGLE_SHEETS_ENABLED", "false").lower()
+        in {"1", "true", "yes", "on"},
     )
 
 
