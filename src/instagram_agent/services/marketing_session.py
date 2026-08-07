@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
-from instagram_agent.agents.discovery import DiscoveryAgent
 from instagram_agent.agents.research import ResearchAgent
 from instagram_agent.agents.scorer import ScorerAgent
 from instagram_agent.browser.instagram_scraper import InstagramScraper
@@ -33,6 +32,7 @@ from instagram_agent.logging_utils import (
 )
 from instagram_agent.pipelines.analyse_profile import analyse_profile
 from instagram_agent.services.csv_exporter import CsvExporter
+from instagram_agent.services.discovery_orchestrator import DiscoveryOrchestrator
 from instagram_agent.services.json_exporter import JsonExporter
 from instagram_agent.services.notion_exporter import NotionExporter
 from instagram_agent.services.opportunities import OpportunityService
@@ -103,6 +103,7 @@ class SessionOutcome:
     tasks: list[MarketingTask] = field(default_factory=list)
     tasks_estimated_minutes: float = 0.0
     opportunities: list[CommentOpportunity] = field(default_factory=list)
+
 
 def priority_from_brand_fit(brand_fit: int) -> str:
     if brand_fit >= 9:
@@ -267,16 +268,28 @@ class MarketingSessionService:
 
             emit("Preparing session", total=0, analysed=0)
             log(f"Brand resolved: {brand.name}")
-            log(f"Discovery query: {query}")
+            log(f"Seed topic (planner input): {query}")
             log(f"Session budget: {options.duration_minutes} minutes")
 
             profile_urls: list[str] = []
+            query_sources: dict[str, list[str]] = {}
+            orchestrator: DiscoveryOrchestrator | None = None
             if options.discover:
-                emit("Discovering creators")
-                log("Starting creator discovery…")
-                discovery = await DiscoveryAgent().discover(query)
+                emit("Planning + discovering creators")
+                log("Starting AI search planner + multi-query discovery…")
+                orchestrator = DiscoveryOrchestrator()
+                discovery = await orchestrator.discover_for_brand(
+                    brand,
+                    deadline=deadline,
+                    on_progress=log,
+                )
                 profile_urls = list(discovery.profile_urls)
-                log(f"Discovered {len(profile_urls)} profiles")
+                query_sources = dict(discovery.query_sources)
+                log(
+                    f"Discovered {len(profile_urls)} profiles "
+                    f"(ran {len(discovery.queries_run)} queries, "
+                    f"skipped {len(discovery.queries_skipped)})"
+                )
             else:
                 log("Discovery skipped")
 
@@ -410,6 +423,15 @@ class MarketingSessionService:
             emit("Building today's comment opportunities")
             opportunities = OpportunityService().build_from_results(brand, results)
             log(f"Ranked {len(opportunities)} comment opportunities")
+
+            if orchestrator is not None and query_sources:
+                orchestrator.history.record_outcomes(
+                    query_sources=query_sources,
+                    results=results,
+                    opportunities=opportunities,
+                )
+                log("Updated search strategy weights from outcomes")
+
             outcome = SessionOutcome(
                 brand=brand,
                 results=results,

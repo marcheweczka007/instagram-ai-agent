@@ -42,6 +42,34 @@ class DiscoveryResult(BaseModel):
         default_factory=list,
         description="Instagram profile URLs discovered for the search query.",
     )
+    query_sources: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Map of profile URL → search queries that found it.",
+    )
+    search_plan: "SearchPlan | None" = None
+    queries_run: list[str] = Field(default_factory=list)
+    queries_skipped: list[str] = Field(
+        default_factory=list,
+        description="Queries skipped because recent cached results exist.",
+    )
+
+
+class SearchPlan(BaseModel):
+    """AI-generated multi-angle search plan for creator discovery.
+
+    Channel-agnostic: the same plan can feed Google, Instagram, TikTok, etc.
+    """
+
+    core_themes: list[str] = Field(default_factory=list)
+    adjacent_themes: list[str] = Field(default_factory=list)
+    search_keywords: list[str] = Field(default_factory=list)
+    hashtags: list[str] = Field(default_factory=list)
+    creator_archetypes: list[str] = Field(default_factory=list)
+    brand_archetypes: list[str] = Field(default_factory=list)
+    search_queries: list[str] = Field(
+        default_factory=list,
+        description="At least 30 diverse search queries for discovery channels.",
+    )
 
 
 class BrandProfile(BaseModel):

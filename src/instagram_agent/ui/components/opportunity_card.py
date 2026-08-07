@@ -17,7 +17,9 @@ def render_opportunity_card(opportunity: CommentOpportunity) -> None:
             st.markdown(f"### {opportunity.creator_name}")
             metrics = st.columns(4)
             metrics[0].metric("Estimated Time", opportunity.estimated_time_label)
-            metrics[1].metric("Opportunity Score", f"{opportunity.opportunity_score:.0f}")
+            metrics[1].metric(
+                "Opportunity Score", f"{opportunity.opportunity_score:.0f}"
+            )
             metrics[2].metric("Marketing Impact", opportunity.marketing_impact)
             metrics[3].metric("Brand Fit", f"{opportunity.brand_fit}/10")
 

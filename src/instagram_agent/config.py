@@ -26,6 +26,9 @@ class Settings:
     browser_timeout_seconds: float = 60.0
     discovery_timeout_seconds: float = 90.0
     discovery_max_results: int = 20
+    discovery_min_plan_queries: int = 30
+    discovery_max_queries_per_run: int = 30
+    discovery_query_cooldown_hours: int = 48
     llm_http_timeout_seconds: float = 40.0
     extraction_http_timeout_seconds: float = 30.0
     llm_call_timeout_seconds: float = 40.0
@@ -71,6 +74,13 @@ def get_settings() -> Settings:
         browser_timeout_seconds=float(os.getenv("BROWSER_TIMEOUT_SECONDS", "60")),
         discovery_timeout_seconds=float(os.getenv("DISCOVERY_TIMEOUT_SECONDS", "90")),
         discovery_max_results=int(os.getenv("DISCOVERY_MAX_RESULTS", "20")),
+        discovery_min_plan_queries=int(os.getenv("DISCOVERY_MIN_PLAN_QUERIES", "30")),
+        discovery_max_queries_per_run=int(
+            os.getenv("DISCOVERY_MAX_QUERIES_PER_RUN", "30")
+        ),
+        discovery_query_cooldown_hours=int(
+            os.getenv("DISCOVERY_QUERY_COOLDOWN_HOURS", "48")
+        ),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         output_dir=Path(os.getenv("OUTPUT_DIR", "outputs")),
         csv_dir=Path(os.getenv("OUTPUT_DIR", "outputs")) / "csv",
@@ -79,7 +89,9 @@ def get_settings() -> Settings:
         google_sheets_credentials_path=Path(
             os.getenv("GOOGLE_SHEETS_CREDENTIALS_PATH", "credentials.json")
         ),
-        google_sheets_spreadsheet_id=os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "").strip(),
+        google_sheets_spreadsheet_id=os.getenv(
+            "GOOGLE_SHEETS_SPREADSHEET_ID", ""
+        ).strip(),
         google_sheets_worksheet_name=os.getenv(
             "GOOGLE_SHEETS_WORKSHEET_NAME", "Creators"
         ).strip()

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 
-from instagram_agent.agents.discovery import DiscoveryAgent
 from instagram_agent.agents.research import ResearchAgent
 from instagram_agent.config import get_settings
 from instagram_agent.domain.models import BrandProfile, BrandResearchResult
@@ -17,9 +16,11 @@ from instagram_agent.logging_utils import (
 from instagram_agent.pipelines.analyse_profiles import analyse_profiles
 from instagram_agent.services.crm_exporter import CrmExporter
 from instagram_agent.services.csv_exporter import CsvExporter
+from instagram_agent.services.discovery_orchestrator import DiscoveryOrchestrator
 from instagram_agent.services.google_sheets_exporter import GoogleSheetsExporter
 from instagram_agent.services.json_exporter import JsonExporter
 from instagram_agent.services.notion_exporter import NotionExporter
+from instagram_agent.services.opportunities import OpportunityService
 from instagram_agent.services.report_generator import ReportGenerator, save_markdown
 
 logger = logging.getLogger(__name__)
@@ -82,13 +83,16 @@ async def discover_and_research(
     output_report: str | None = None,
     output_json: str | None = None,
 ) -> list[BrandResearchResult]:
-    """Discover creators for ``query``, analyse them, and research brand fit.
+    """Discover creators for ``brand`` (AI search plan), then research fit.
 
+    ``query`` is retained for API compatibility; planning uses ``brand``.
     Results are always sorted by ``research.brand_fit`` descending.
     Each creator is upserted to Notion (or Sheets) immediately after research.
     """
     with pipeline_logging("discover_and_research"):
-        discovery = await DiscoveryAgent().discover(query)
+        logger.info("Legacy seed query (informational): %s", query)
+        orchestrator = DiscoveryOrchestrator()
+        discovery = await orchestrator.discover_for_brand(brand)
         analyses = await analyse_profiles(discovery.profile_urls)
 
         crm = _build_crm_exporter()
@@ -121,6 +125,13 @@ async def discover_and_research(
             results,
             key=lambda item: item.research.brand_fit,
             reverse=True,
+        )
+
+        opportunities = OpportunityService().build_from_results(brand, results)
+        orchestrator.history.record_outcomes(
+            query_sources=discovery.query_sources,
+            results=results,
+            opportunities=opportunities,
         )
 
         stem = brand.name.lower().replace(" ", "_")

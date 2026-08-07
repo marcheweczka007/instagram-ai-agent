@@ -31,30 +31,19 @@ Typical flow:
 ```text
 ┌──────────────────────────────┐
 │ CLI / Streamlit UI           │
-│  discover_and_research()     │
 │  MarketingSessionService     │
-│  analyse_profile(s)          │
+│  discover_and_research()     │
 └──────────────┬───────────────┘
                │
-     ┌─────────┴─────────┐
-     ▼                   ▼
-┌────────────┐    ┌─────────────────┐
-│ Agents     │    │ Browser         │
-│ Discovery  │    │ InstagramScraper│
-│ Scorer     │    └────────┬────────┘
-│ Research   │             │
-└─────┬──────┘             │
-      │                    │
-      └────────┬───────────┘
-               ▼
-      ┌────────────────┐
-      │ Domain models  │
-      └───────┬────────┘
-              ▼
-      ┌──────────────────────────┐
-      │ Services                 │
-      │ CSV / JSON / Markdown    │
-      └──────────────────────────┘
+     ┌─────────┴──────────┐
+     ▼                    ▼
+┌─────────────┐    ┌──────────────────┐
+│ SearchPlan  │    │ Discovery        │
+│ Planner     │───▶│ Orchestrator     │
+└─────────────┘    │ + SearchChannels │
+                   └────────┬─────────┘
+                            ▼
+                   Agents / Browser / CRM
 ```
 
 ---
@@ -123,7 +112,10 @@ OPENAI_API_KEY=sk-...
 | `BROWSER_MAX_STEPS` | `8` | Browser Use max steps |
 | `BROWSER_TIMEOUT_SECONDS` | `60` | Scraper wall timeout |
 | `DISCOVERY_TIMEOUT_SECONDS` | `90` | Discovery wall timeout |
-| `DISCOVERY_MAX_RESULTS` | `20` | Max discovered URLs |
+| `DISCOVERY_MAX_RESULTS` | `20` | Max merged unique profile URLs |
+| `DISCOVERY_MIN_PLAN_QUERIES` | `30` | Minimum AI-planned search queries |
+| `DISCOVERY_MAX_QUERIES_PER_RUN` | `30` | Cap on live queries per discovery run |
+| `DISCOVERY_QUERY_COOLDOWN_HOURS` | `48` | Skip re-running recent queries |
 | `LOG_LEVEL` | `INFO` | Logging verbosity |
 | `GOOGLE_SHEETS_ENABLED` | `false` | Enable live Sheets export |
 | `GOOGLE_SHEETS_CREDENTIALS_PATH` | `credentials.json` | Service account JSON path |
