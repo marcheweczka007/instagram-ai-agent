@@ -15,33 +15,64 @@ from instagram_agent.logging_utils import (
     pipeline_logging,
 )
 from instagram_agent.pipelines.analyse_profiles import analyse_profiles
+from instagram_agent.services.crm_exporter import CrmExporter
 from instagram_agent.services.csv_exporter import CsvExporter
 from instagram_agent.services.google_sheets_exporter import GoogleSheetsExporter
 from instagram_agent.services.json_exporter import JsonExporter
+from instagram_agent.services.notion_exporter import NotionExporter
 from instagram_agent.services.report_generator import ReportGenerator, save_markdown
 
 logger = logging.getLogger(__name__)
 
 
-def _build_sheets_exporter() -> GoogleSheetsExporter | None:
+def _build_crm_exporter() -> CrmExporter | None:
+    """Prefer Notion CRM; optionally keep Google Sheets as secondary live sink."""
     settings = get_settings()
-    configured = settings.google_sheets_enabled or bool(
+    notion_configured = settings.notion_enabled and bool(
+        settings.notion_token and settings.notion_database_id
+    )
+    if notion_configured:
+        exporter = NotionExporter(settings=settings)
+        try:
+            exporter.connect()
+            return exporter
+        except Exception:
+            logger.warning(
+                "Notion setup failed; upserts will fall back to CSV",
+                exc_info=True,
+            )
+            return exporter
+
+    sheets_configured = settings.google_sheets_enabled or bool(
         settings.google_sheets_spreadsheet_id
     )
-    if not configured:
+    if not sheets_configured:
         return None
 
-    exporter = GoogleSheetsExporter(settings=settings)
+    sheets = GoogleSheetsExporter(settings=settings)
     try:
-        exporter.connect()
-        exporter.create_sheet_if_missing()
-        return exporter
+        sheets.connect()
+        sheets.create_sheet_if_missing()
     except Exception:
-        logger.exception(
-            "Google Sheets setup failed; rows will fall back to CSV via exporter"
+        logger.warning(
+            "Google Sheets setup failed; rows will fall back to CSV",
+            exc_info=True,
         )
-        # Still return exporter so append_result can use CSV fallback.
-        return exporter
+    return _SheetsCrmAdapter(sheets)
+
+
+class _SheetsCrmAdapter(CrmExporter):
+    """Adapt GoogleSheetsExporter to the CRM upsert interface."""
+
+    def __init__(self, sheets: GoogleSheetsExporter) -> None:
+        self._sheets = sheets
+
+    def connect(self) -> None:
+        self._sheets.connect()
+        self._sheets.create_sheet_if_missing()
+
+    def upsert_creator(self, result: BrandResearchResult) -> None:
+        self._sheets.append_result(result)
 
 
 async def discover_and_research(
@@ -54,14 +85,13 @@ async def discover_and_research(
     """Discover creators for ``query``, analyse them, and research brand fit.
 
     Results are always sorted by ``research.brand_fit`` descending.
-    When Google Sheets is configured, each creator is appended immediately
-    after research (CSV fallback on Sheets errors).
+    Each creator is upserted to Notion (or Sheets) immediately after research.
     """
     with pipeline_logging("discover_and_research"):
         discovery = await DiscoveryAgent().discover(query)
         analyses = await analyse_profiles(discovery.profile_urls)
 
-        sheets = _build_sheets_exporter()
+        crm = _build_crm_exporter()
         researcher = ResearchAgent()
         results: list[BrandResearchResult] = []
 
@@ -77,8 +107,15 @@ async def discover_and_research(
                 research=research,
             )
             results.append(result)
-            if sheets is not None:
-                sheets.append_result(result)
+            if crm is not None:
+                try:
+                    crm.upsert_creator(result)
+                except Exception:
+                    logger.warning(
+                        "CRM upsert failed for %s; continuing pipeline",
+                        result.profile.name,
+                        exc_info=True,
+                    )
 
         results = sorted(
             results,

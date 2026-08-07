@@ -46,6 +46,10 @@ class Settings:
     google_sheets_worksheet_name: str = "Creators"
     google_sheets_enabled: bool = False
 
+    notion_token: str = ""
+    notion_database_id: str = ""
+    notion_enabled: bool = True
+
     def ensure_output_dirs(self) -> None:
         """Create standard output folders if missing."""
         for path in (self.output_dir, self.csv_dir, self.reports_dir, self.logs_dir):
@@ -77,6 +81,10 @@ def get_settings() -> Settings:
         ).strip()
         or "Creators",
         google_sheets_enabled=os.getenv("GOOGLE_SHEETS_ENABLED", "false").lower()
+        in {"1", "true", "yes", "on"},
+        notion_token=os.getenv("NOTION_TOKEN", "").strip(),
+        notion_database_id=os.getenv("NOTION_DATABASE_ID", "").strip(),
+        notion_enabled=os.getenv("NOTION_ENABLED", "true").lower()
         in {"1", "true", "yes", "on"},
     )
 

@@ -124,6 +124,9 @@ OPENAI_API_KEY=sk-...
 | `GOOGLE_SHEETS_CREDENTIALS_PATH` | `credentials.json` | Service account JSON path |
 | `GOOGLE_SHEETS_SPREADSHEET_ID` | empty | Target spreadsheet ID |
 | `GOOGLE_SHEETS_WORKSHEET_NAME` | `Creators` | Worksheet / tab name |
+| `NOTION_ENABLED` | `true` | Enable Notion Creator CRM |
+| `NOTION_TOKEN` | empty | Notion internal integration token |
+| `NOTION_DATABASE_ID` | empty | Target Notion database ID |
 
 ---
 
@@ -193,21 +196,108 @@ Each brand research run can produce:
 
 | Artifact | Format | Purpose |
 |----------|--------|---------|
-| Live creator rows | Google Sheets | Primary collaborative workspace |
-| Ranked creators | CSV | Local backup / offline review |
+| Creator CRM rows | Notion | Primary collaborative workspace |
+| Live spreadsheet rows | Google Sheets | Optional secondary live sink |
+| Ranked creators | CSV | Offline backup / fallback |
 | Brand research report | Markdown | Manager-readable narrative |
 | Summary | JSON | API / automation handoff |
 
 Results are sorted by `brand_fit` descending.
 
-When Google Sheets is configured, each creator is **appended immediately** after research.
-If Sheets fails, the exporter automatically falls back to CSV (`outputs/csv/google_sheets_fallback.csv`).
+When Notion is configured, each creator is **upserted immediately** after research.
+If Notion fails, the exporter falls back to CSV (`outputs/csv/notion_fallback.csv`) and the pipeline continues.
+
+---
+
+## Notion Creator CRM setup
+
+Notion is the preferred live CRM workspace. Each researched creator is upserted immediately after analysis.
+
+### 1. Create a Notion integration
+
+1. Open [Notion My Integrations](https://www.notion.so/my-integrations)
+2. Click **New integration**
+3. Name it (for example `Instagram Brand Research`)
+4. Choose the workspace that owns your CRM database
+5. Set capabilities to include **Read content** and **Update content**
+
+### 2. Obtain `NOTION_TOKEN`
+
+1. Open the integration page
+2. Copy the **Internal Integration Secret**
+3. Put it in `.env` as `NOTION_TOKEN`
+
+### 3. Obtain `NOTION_DATABASE_ID`
+
+1. Create a Notion **database** (full-page database works best)
+2. Open the database as a full page
+3. Copy the ID from the URL:
+
+```text
+https://www.notion.so/workspace/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx?v=...
+                               └──────────── DATABASE_ID ────────────┘
+```
+
+Use the 32-character ID (with or without dashes).
+
+### 4. Connect the database to the integration
+
+1. Open the database in Notion
+2. Click **••• → Connections** (or **Add connections**)
+3. Select your integration
+4. Confirm access
+
+Without this step, API calls will fail with permission errors.
+
+### 5. Expected database schema
+
+Create these properties exactly (names matter):
+
+| Property | Type | Notes |
+|----------|------|------|
+| Creator | Title | |
+| Instagram URL | URL | Unique key used for upserts |
+| Followers | Number | |
+| Score | Number | |
+| Brand Fit | Number | |
+| Confidence | Number | |
+| Priority | Select | Options: `High`, `Medium`, `Low` |
+| Status | Status | Include option `New` (user-managed afterwards) |
+| Suggested Comment | Rich text | |
+| Suggested DM | Rich text | |
+| First Outreach Angle | Rich text | |
+| Collaboration Ideas | Rich text | |
+| Strengths | Rich text | |
+| Weaknesses | Rich text | |
+| AI Notes | Rich text | |
+| Last Analysed | Date | |
+
+### 6. Enable in `.env`
+
+```bash
+NOTION_ENABLED=true
+NOTION_TOKEN=secret_...
+NOTION_DATABASE_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### 7. Test create + update (no duplicates)
+
+```bash
+uv run python -m instagram_agent.notion_test
+```
+
+Expected behaviour:
+- first run creates the page with `Status=New`
+- second run updates the same page (same Instagram URL)
+- `Status` is not overwritten on update
+
+If Notion is unavailable, rows fall back to `outputs/csv/notion_fallback.csv` and the pipeline continues.
 
 ---
 
 ## Google Sheets setup
 
-Google Sheets is the preferred live output. CSV remains the automatic fallback.
+Google Sheets is an optional secondary live sink when Notion is not configured. CSV remains the automatic fallback.
 
 ### 1. Create a Google Cloud project
 
