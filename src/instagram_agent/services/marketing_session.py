@@ -21,6 +21,7 @@ from instagram_agent.config import get_settings
 from instagram_agent.domain.models import (
     BrandProfile,
     BrandResearchResult,
+    CommentOpportunity,
     ResearchAnalysis,
 )
 from instagram_agent.fixtures import build_jollyzu_brand
@@ -34,6 +35,7 @@ from instagram_agent.pipelines.analyse_profile import analyse_profile
 from instagram_agent.services.csv_exporter import CsvExporter
 from instagram_agent.services.json_exporter import JsonExporter
 from instagram_agent.services.notion_exporter import NotionExporter
+from instagram_agent.services.opportunities import OpportunityService
 from instagram_agent.services.report_generator import ReportGenerator, save_markdown
 
 logger = logging.getLogger(__name__)
@@ -100,7 +102,7 @@ class SessionOutcome:
     notion_url: str | None = None
     tasks: list[MarketingTask] = field(default_factory=list)
     tasks_estimated_minutes: float = 0.0
-
+    opportunities: list[CommentOpportunity] = field(default_factory=list)
 
 def priority_from_brand_fit(brand_fit: int) -> str:
     if brand_fit >= 9:
@@ -405,6 +407,9 @@ class MarketingSessionService:
                 log(f"Markdown report exported → {report_path}")
 
             tasks = build_marketing_tasks(results)
+            emit("Building today's comment opportunities")
+            opportunities = OpportunityService().build_from_results(brand, results)
+            log(f"Ranked {len(opportunities)} comment opportunities")
             outcome = SessionOutcome(
                 brand=brand,
                 results=results,
@@ -416,6 +421,7 @@ class MarketingSessionService:
                 notion_url=notion_url,
                 tasks=tasks,
                 tasks_estimated_minutes=sum(task.estimated_minutes for task in tasks),
+                opportunities=opportunities,
             )
             progress.is_running = False
             progress.is_complete = True

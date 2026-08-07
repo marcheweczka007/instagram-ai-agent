@@ -9,7 +9,7 @@ from instagram_agent.ui.components.creator_card import render_creator_cards
 
 
 def render_creators_page() -> None:
-    st.title("Creator Database")
+    st.title("Creators")
     st.caption("All analysed creators from this workspace")
 
     progress = state.get_progress()

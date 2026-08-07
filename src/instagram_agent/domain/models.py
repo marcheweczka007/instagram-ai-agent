@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -81,3 +83,54 @@ class BrandResearchResult(BaseModel):
     profile: InstagramProfile
     analysis: ProfileAnalysis
     research: ResearchAnalysis
+
+
+class OpportunityScoreBreakdown(BaseModel):
+    """Explainable components that form the Opportunity Score (0–100)."""
+
+    brand_fit: float = Field(ge=0, le=35)
+    post_freshness: float = Field(ge=0, le=20)
+    comment_room: float = Field(
+        ge=0,
+        le=15,
+        description="Higher when the post likely has fewer existing comments.",
+    )
+    brand_similarity: float = Field(ge=0, le=15)
+    visibility_potential: float = Field(ge=0, le=15)
+
+    @property
+    def total(self) -> float:
+        return round(
+            self.brand_fit
+            + self.post_freshness
+            + self.comment_room
+            + self.brand_similarity
+            + self.visibility_potential,
+            1,
+        )
+
+
+OpportunityStatus = Literal["active", "done", "skipped"]
+OpportunityPriority = Literal["High", "Medium", "Low"]
+
+
+class CommentOpportunity(BaseModel):
+    """One actionable comment opportunity: one creator + one post."""
+
+    id: str
+    creator_name: str
+    creator_url: str
+    profile_picture_url: str
+    brand_fit: int = Field(ge=1, le=10)
+    opportunity_score: float = Field(ge=0, le=100)
+    priority: OpportunityPriority
+    post_preview: str
+    post_url: str
+    post_index: int = 0
+    why_now: str
+    score_breakdown: OpportunityScoreBreakdown
+    score_explanation: str
+    latest_comments: list[str] = Field(default_factory=list)
+    comment_suggestions: list[str] = Field(min_length=3, max_length=3)
+    estimated_existing_comments: int = 0
+    status: OpportunityStatus = "active"

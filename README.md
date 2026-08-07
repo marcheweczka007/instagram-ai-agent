@@ -147,11 +147,9 @@ Opens the **Marketing Workspace** at `http://localhost:8501`:
 
 | Page | Purpose |
 |------|---------|
-| Dashboard | Greeting, today's stats, weekly goal, impact tasks |
-| Discover | Find similar creators with live progress |
-| Creator Database | Cards for analysed creators |
-| Comments | Ready-to-copy comments |
-| Outreach | Ready-to-copy DMs |
+| Today's Opportunities | Ranked comment actions (default landing) |
+| Creators | Analysed creator cards |
+| Discovery | Find similar creators + build opportunities |
 | Reports | Markdown / CSV / JSON / Notion |
 | Settings | Model, Notion, headless, output dir |
 

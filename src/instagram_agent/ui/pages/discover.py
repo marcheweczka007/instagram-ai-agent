@@ -1,4 +1,4 @@
-"""Discover similar creators page."""
+"""Discovery page — find similar creators and build opportunities."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from instagram_agent.ui.components.session_runner import run_marketing_session
 
 
 def render_discover_page() -> None:
-    st.title("Discover")
-    st.caption("Find similar creators for your brand")
+    st.title("Discovery")
+    st.caption("Find similar creators, then jump straight into today's actions")
 
     brand_url = st.text_input(
         "Brand Instagram URL",
@@ -45,6 +45,8 @@ def render_discover_page() -> None:
             duration_minutes=int(duration),
         )
         run_marketing_session(options, label="Finding similar creators…")
+        if state.get_outcome() is not None and not state.get_progress().error:
+            st.rerun()
 
     st.divider()
     render_progress_logs()
