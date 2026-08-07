@@ -9,7 +9,11 @@ from instagram_agent.fixtures import build_jollyzu_brand
 from instagram_agent.services.opportunities import (
     HIGH_PRIORITY_THRESHOLD,
     OpportunityService,
+    build_session_summary,
+    estimate_time_breakdown,
     explain_score,
+    format_estimated_time,
+    marketing_impact_from_breakdown,
     priority_from_opportunity_score,
     score_opportunity,
 )
@@ -100,3 +104,35 @@ def test_opportunity_service_ranks_by_opportunity_score() -> None:
     assert len(opportunities[0].comment_suggestions) == 3
     assert opportunities[0].priority == "High"
     assert opportunities[0].opportunity_score >= HIGH_PRIORITY_THRESHOLD
+    assert opportunities[0].estimated_time_label.startswith("~")
+    assert opportunities[0].marketing_impact in {
+        "Low",
+        "Medium",
+        "High",
+        "Very High",
+    }
+
+    summary = build_session_summary(opportunities)
+    assert summary.high_priority_count >= 1
+    assert "Estimated session" in summary.today_summary
+    assert summary.estimated_total_label.startswith("~")
+
+
+def test_time_and_impact_helpers() -> None:
+    brand = build_jollyzu_brand()
+    breakdown = score_opportunity(
+        brand_fit=9,
+        confidence=9,
+        followers=8000,
+        post_index=0,
+        estimated_comments=5,
+        brand=brand,
+        post_preview="Colourful upcycled bag",
+        research_text="sustainability craftsmanship colourful",
+    )
+    assert format_estimated_time(120) == "~2 min"
+    assert estimate_time_breakdown(5).total_seconds == 120
+    assert marketing_impact_from_breakdown(breakdown) in {
+        "High",
+        "Very High",
+    }

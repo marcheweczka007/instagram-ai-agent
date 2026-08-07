@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
 import re
+from dataclasses import dataclass
 from urllib.parse import quote
 
 from instagram_agent.agents.commenter import CommenterAgent
@@ -12,14 +14,19 @@ from instagram_agent.domain.models import (
     BrandProfile,
     BrandResearchResult,
     CommentOpportunity,
+    MarketingImpact,
     OpportunityPriority,
     OpportunityScoreBreakdown,
+    OpportunityTimeBreakdown,
 )
 
 logger = logging.getLogger(__name__)
 
 HIGH_PRIORITY_THRESHOLD = 70.0
 MEDIUM_PRIORITY_THRESHOLD = 50.0
+
+# Baseline action times (seconds) for one comment opportunity.
+_BASE_TIME = OpportunityTimeBreakdown()
 
 
 def priority_from_opportunity_score(score: float) -> OpportunityPriority:
@@ -42,6 +49,49 @@ def estimate_existing_comments(followers: int, post_index: int) -> int:
     base = max(followers // 80, 3)
     # Newer posts (index 0) usually have fewer comments than older ones.
     return max(1, int(base * (0.55 + 0.2 * post_index)))
+
+
+def estimate_time_breakdown(estimated_comments: int) -> OpportunityTimeBreakdown:
+    """Estimate user effort from the actions required to complete one comment."""
+    # Busier threads take longer to skim.
+    extra_read = 0
+    if estimated_comments > 25:
+        extra_read = 20
+    elif estimated_comments > 8:
+        extra_read = 10
+    return OpportunityTimeBreakdown(
+        read_post=_BASE_TIME.read_post,
+        read_comments=_BASE_TIME.read_comments + extra_read,
+        choose_suggestion=_BASE_TIME.choose_suggestion,
+        copy_comment=_BASE_TIME.copy_comment,
+        open_instagram=_BASE_TIME.open_instagram,
+        paste_and_publish=_BASE_TIME.paste_and_publish,
+    )
+
+
+def format_estimated_time(total_seconds: int) -> str:
+    minutes = max(1, math.ceil(total_seconds / 60))
+    return f"~{minutes} min"
+
+
+def marketing_impact_from_breakdown(
+    breakdown: OpportunityScoreBreakdown,
+) -> MarketingImpact:
+    """Map score components to a habit-friendly impact label."""
+    points = (
+        (breakdown.brand_fit / 35) * 25
+        + (breakdown.post_freshness / 20) * 25
+        + (breakdown.comment_room / 15) * 20
+        + (breakdown.brand_similarity / 15) * 15
+        + (breakdown.visibility_potential / 15) * 15
+    )
+    if points >= 80:
+        return "Very High"
+    if points >= 65:
+        return "High"
+    if points >= 45:
+        return "Medium"
+    return "Low"
 
 
 def score_opportunity(
@@ -128,6 +178,116 @@ def build_why_now(
     )
 
 
+@dataclass(frozen=True)
+class OpportunitiesSessionSummary:
+    """Top-of-page session snapshot for Today's Opportunities."""
+
+    high_priority_count: int
+    active_count: int
+    completed_count: int
+    skipped_count: int
+    estimated_total_seconds: int
+    estimated_total_label: str
+    average_opportunity_score: float
+    estimated_marketing_impact: MarketingImpact
+    today_summary: str
+    is_session_complete: bool
+    completed_seconds: int
+    completed_time_label: str
+
+
+def build_session_summary(
+    opportunities: list[CommentOpportunity],
+) -> OpportunitiesSessionSummary:
+    active = [item for item in opportunities if item.status == "active"]
+    high = [
+        item for item in active if item.opportunity_score >= HIGH_PRIORITY_THRESHOLD
+    ]
+    done = [item for item in opportunities if item.status == "done"]
+    skipped = [item for item in opportunities if item.status == "skipped"]
+
+    # Habit focus: estimate remaining work on what is still actionable.
+    focus = high or active
+    total_seconds = sum(item.estimated_time_seconds for item in focus)
+    completed_seconds = sum(item.estimated_time_seconds for item in done)
+
+    scored = focus or opportunities
+    average = (
+        round(sum(item.opportunity_score for item in scored) / len(scored), 1)
+        if scored
+        else 0.0
+    )
+    impact = _session_impact(focus or done)
+    summary = build_today_summary(
+        opportunities=opportunities,
+        focus=focus,
+        total_seconds=total_seconds,
+        impact=impact,
+    )
+    is_complete = bool(opportunities) and not active
+
+    return OpportunitiesSessionSummary(
+        high_priority_count=len(high),
+        active_count=len(active),
+        completed_count=len(done),
+        skipped_count=len(skipped),
+        estimated_total_seconds=total_seconds,
+        estimated_total_label=(
+            format_estimated_time(total_seconds) if total_seconds else "~0 min"
+        ),
+        average_opportunity_score=average,
+        estimated_marketing_impact=impact,
+        today_summary=summary,
+        is_session_complete=is_complete,
+        completed_seconds=completed_seconds,
+        completed_time_label=(
+            format_estimated_time(completed_seconds) if completed_seconds else "~0 min"
+        ),
+    )
+
+
+def build_today_summary(
+    *,
+    opportunities: list[CommentOpportunity],
+    focus: list[CommentOpportunity],
+    total_seconds: int,
+    impact: MarketingImpact,
+) -> str:
+    """Short coaching summary that encourages finishing today's session."""
+    if not opportunities:
+        return (
+            "No opportunities yet today. Run Discovery to build a fresh "
+            "high-impact comment list — consistency beats intensity."
+        )
+    if not focus:
+        return (
+            "You've cleared today's active list. Come back tomorrow for a "
+            "fresh set of opportunities and keep the streak going."
+        )
+
+    fresh = sum(1 for item in focus if item.score_breakdown.post_freshness >= 18)
+    open_threads = sum(1 for item in focus if item.score_breakdown.comment_room >= 11)
+    strength = (
+        "particularly strong"
+        if impact in {"High", "Very High"}
+        else "solid"
+        if impact == "Medium"
+        else "a useful warm-up"
+    )
+    freshness_line = (
+        f"Most recommended creators posted recently and currently have low "
+        f"comment competition ({open_threads}/{len(focus)} open threads)."
+        if fresh or open_threads
+        else "Prioritise the top cards — they offer the best effort-to-impact ratio."
+    )
+    minutes = format_estimated_time(total_seconds).lstrip("~")
+    return (
+        f"Today's opportunities are {strength}. {freshness_line} "
+        f"Estimated session: {minutes}. "
+        f"Expected impact: {impact}."
+    )
+
+
 class OpportunityService:
     """Build ranked CommentOpportunity rows from research results."""
 
@@ -181,6 +341,7 @@ class OpportunityService:
             research_text=research_text,
         )
         score = breakdown.total
+        time_breakdown = estimate_time_breakdown(estimated_comments)
         suggestions = self._commenter.generate_suggestions(
             brand=brand,
             result=result,
@@ -203,6 +364,10 @@ class OpportunityService:
             brand_fit=result.research.brand_fit,
             opportunity_score=score,
             priority=priority_from_opportunity_score(score),
+            marketing_impact=marketing_impact_from_breakdown(breakdown),
+            estimated_time_seconds=time_breakdown.total_seconds,
+            estimated_time_label=format_estimated_time(time_breakdown.total_seconds),
+            time_breakdown=time_breakdown,
             post_preview=post_preview,
             post_url=post_url,
             post_index=post_index,
@@ -219,6 +384,20 @@ class OpportunityService:
             estimated_existing_comments=estimated_comments,
             status="active",
         )
+
+
+def _session_impact(items: list[CommentOpportunity]) -> MarketingImpact:
+    if not items:
+        return "Low"
+    rank = {"Low": 0, "Medium": 1, "High": 2, "Very High": 3}
+    average = sum(rank[item.marketing_impact] for item in items) / len(items)
+    if average >= 2.5:
+        return "Very High"
+    if average >= 1.5:
+        return "High"
+    if average >= 0.75:
+        return "Medium"
+    return "Low"
 
 
 def _similarity_points(

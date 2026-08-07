@@ -112,6 +112,29 @@ class OpportunityScoreBreakdown(BaseModel):
 
 OpportunityStatus = Literal["active", "done", "skipped"]
 OpportunityPriority = Literal["High", "Medium", "Low"]
+MarketingImpact = Literal["Low", "Medium", "High", "Very High"]
+
+
+class OpportunityTimeBreakdown(BaseModel):
+    """Seconds estimated for each user action in one opportunity."""
+
+    read_post: int = 20
+    read_comments: int = 40
+    choose_suggestion: int = 10
+    copy_comment: int = 5
+    open_instagram: int = 15
+    paste_and_publish: int = 30
+
+    @property
+    def total_seconds(self) -> int:
+        return (
+            self.read_post
+            + self.read_comments
+            + self.choose_suggestion
+            + self.copy_comment
+            + self.open_instagram
+            + self.paste_and_publish
+        )
 
 
 class CommentOpportunity(BaseModel):
@@ -124,6 +147,12 @@ class CommentOpportunity(BaseModel):
     brand_fit: int = Field(ge=1, le=10)
     opportunity_score: float = Field(ge=0, le=100)
     priority: OpportunityPriority
+    marketing_impact: MarketingImpact = "Medium"
+    estimated_time_seconds: int = 120
+    estimated_time_label: str = "~2 min"
+    time_breakdown: OpportunityTimeBreakdown = Field(
+        default_factory=OpportunityTimeBreakdown
+    )
     post_preview: str
     post_url: str
     post_index: int = 0

@@ -10,15 +10,28 @@ from instagram_agent.ui import state
 
 def render_opportunity_card(opportunity: CommentOpportunity) -> None:
     with st.container(border=True):
-        head = st.columns([1, 4, 1])
-        with head[0]:
+        top = st.columns([1, 5])
+        with top[0]:
             st.image(opportunity.profile_picture_url, width=72)
-        with head[1]:
+        with top[1]:
             st.markdown(f"### {opportunity.creator_name}")
-            st.caption(opportunity.creator_url)
-        with head[2]:
-            st.metric("Opportunity", f"{opportunity.opportunity_score:.0f}")
-            st.caption(f"Brand Fit {opportunity.brand_fit}/10")
+            metrics = st.columns(4)
+            metrics[0].metric("Estimated Time", opportunity.estimated_time_label)
+            metrics[1].metric("Opportunity Score", f"{opportunity.opportunity_score:.0f}")
+            metrics[2].metric("Marketing Impact", opportunity.marketing_impact)
+            metrics[3].metric("Brand Fit", f"{opportunity.brand_fit}/10")
+
+        with st.expander("Time breakdown", expanded=False):
+            tb = opportunity.time_breakdown
+            st.write(
+                f"- Read post: {tb.read_post}s\n"
+                f"- Read comments: {tb.read_comments}s\n"
+                f"- Choose AI suggestion: {tb.choose_suggestion}s\n"
+                f"- Copy comment: {tb.copy_comment}s\n"
+                f"- Open Instagram: {tb.open_instagram}s\n"
+                f"- Paste and publish: {tb.paste_and_publish}s\n"
+                f"- **Total: {opportunity.estimated_time_label}**"
+            )
 
         st.markdown(f"**Latest post:** {opportunity.post_preview}")
         st.markdown(f"**Post URL:** [{opportunity.post_url}]({opportunity.post_url})")
